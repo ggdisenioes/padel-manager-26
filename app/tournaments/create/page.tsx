@@ -23,6 +23,8 @@ export default function CreateTournament() {
   const [status, setStatus] = useState("open");
   const [startDate, setStartDate] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -32,9 +34,19 @@ export default function CreateTournament() {
 
     setLoading(true);
 
+    const finalCategory = isCustomCategory
+      ? customCategory.trim()
+      : category;
+
+    if (!finalCategory) {
+      toast.error("Ingresá una categoría válida");
+      setLoading(false);
+      return;
+    }
+
     const payload: TournamentInsert = {
       name: name.trim(),
-      category,
+      category: finalCategory,
       status,
       start_date: startDate ? startDate : null,
     };
@@ -91,8 +103,17 @@ export default function CreateTournament() {
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Categoría</label>
             <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={isCustomCategory ? "__custom__" : category}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "__custom__") {
+                  setIsCustomCategory(true);
+                  setCategory("");
+                } else {
+                  setIsCustomCategory(false);
+                  setCategory(value);
+                }
+              }}
               className="w-full border border-gray-300 rounded px-3 py-2"
             >
               <option value="Mixto A">Mixto A</option>
@@ -101,8 +122,23 @@ export default function CreateTournament() {
               <option value="Masculino B">Masculino B</option>
               <option value="Femenino A">Femenino A</option>
               <option value="Femenino B">Femenino B</option>
+              <option value="__custom__">➕ Crear categoría</option>
             </select>
           </div>
+
+          {isCustomCategory && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Nombre de la nueva categoría
+              </label>
+              <input
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Ej: Senior +40"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Estado</label>

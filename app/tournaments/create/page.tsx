@@ -1,215 +1,151 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
 import Card from "../../components/Card";
 import { supabase } from "../../lib/supabase";
 import { logAction } from "../../lib/audit";
 
-export default function EditTournament() {
+type TournamentInsert = {
+  name: string;
+  category: string;
+  status: string;
+  start_date: string | null;
+};
+
+export default function CreateTournament() {
   const router = useRouter();
-  const params = useParams();
-  const tournamentId = params?.id;
 
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("Mixto A");
+  const [status, setStatus] = useState("open");
+  const [startDate, setStartDate] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [tournament, setTournament] = useState<any>(null);
-  const [matches, setMatches] = useState<any[]>([]);
 
-  const [scoreUpdating, setScoreUpdating] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!tournamentId) return;
-
-    const loadTournament = async () => {
-      const { data, error } = await supabase
-        .from("tournaments")
-        .select()
-        .eq("id", tournamentId)
-        .single();
-
-      if (error) {
-        toast.error("Error cargando torneo");
-        return;
-      }
-
-      setTournament(data);
-    };
-
-    loadTournament();
-  }, [tournamentId]);
-
-  useEffect(() => {
-    if (!tournamentId) return;
-
-    const loadMatches = async () => {
-      const { data, error } = await supabase
-        .from("matches")
-        .select(`id, tournament_id, round_name, place, court, start_time, score, winner,
-          player_1_a, player_2_a, player_1_b, player_2_b,
-          p1a:players!matches_player_1_a_fkey(id,name),
-          p2a:players!matches_player_2_a_fkey(id,name),
-          p1b:players!matches_player_1_b_fkey(id,name),
-          p2b:players!matches_player_2_b_fkey(id,name)`)
-        .eq("tournament_id", tournamentId)
-        .order("start_time", { ascending: true });
-
-      if (error) {
-        toast.error("Error cargando partidos");
-        return;
-      }
-
-      setMatches(data || []);
-    };
-
-    loadMatches();
-  }, [tournamentId]);
-
-  const playerLabel = (p: any, id?: number | null) => p?.name ?? (id ? `#${id}` : "-");
-
-  const teamA = (m: any) =>
-    `${playerLabel(m.p1a, m.player_1_a)}${m.player_2_a ? ` / ${playerLabel(m.p2a, m.player_2_a)}` : ""}`;
-
-  const teamB = (m: any) =>
-    `${playerLabel(m.p1b, m.player_1_b)}${m.player_2_b ? ` / ${playerLabel(m.p2b, m.player_2_b)}` : ""}`;
-
-  const handleDeleteMatch = async (matchId: number) => {
-    if (!tournamentId) return;
-
-    if (!confirm("¿Eliminar este partido?")) return;
-
-    const { error } = await supabase.from("matches").delete().eq("id", matchId);
-
-    if (error) {
-      toast.error("Error eliminando partido");
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast.error("Ingresá un nombre para el torneo");
       return;
     }
 
-    setMatches((prev) => prev.filter((m) => m.id !== matchId));
+    setLoading(true);
 
-    await logAction({
-      action: "DELETE_MATCH",
-      entity: "match",
-      entityId: matchId,
-      metadata: { tournamentId },
-    });
+    const payload: TournamentInsert = {
+      name: name.trim(),
+      category,
+      status,
+      start_date: startDate ? startDate : null,
+    };
 
-    toast.success("Partido eliminado");
-  };
-
-  const handleUpdateScore = async (matchId: number, newScore: string) => {
-    if (!tournamentId) return;
-
-    setScoreUpdating(matchId);
-
-    const { error } = await supabase
-      .from("matches")
-      .update({ score: newScore })
-      .eq("id", matchId);
+    const { data, error } = await supabase
+      .from("tournaments")
+      .insert(payload)
+      .select("id")
+      .single();
 
     if (error) {
-      toast.error("Error actualizando marcador");
-      setScoreUpdating(null);
+      console.error(error);
+      toast.error("Error al crear el torneo");
+      setLoading(false);
       return;
     }
 
-    setMatches((prev) =>
-      prev.map((m) => (m.id === matchId ? { ...m, score: newScore } : m))
-    );
+    // Log de auditoría
+    try {
+      await logAction({
+        action: "CREATE_TOURNAMENT",
+        entity: "tournament",
+        entityId: data.id,
+        metadata: payload,
+      });
+    } catch (e) {
+      // No bloqueamos la UX si el log falla
+      console.warn("No se pudo registrar la acción en auditoría", e);
+    }
 
-    await logAction({
-      action: "UPDATE_MATCH_SCORE",
-      entity: "match",
-      entityId: matchId,
-      metadata: { tournamentId, score: newScore },
-    });
+    toast.success("Torneo creado");
+    setLoading(false);
 
-    toast.success("Marcador actualizado");
-    setScoreUpdating(null);
+    // Redirigir a edición del torneo recién creado
+    router.push(`/tournaments/edit/${data.id}`);
   };
-
-  if (!tournament) {
-    return (
-      <main className="flex-1 overflow-y-auto p-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-6">Cargando torneo...</h2>
-      </main>
-    );
-  }
 
   return (
     <main className="flex-1 overflow-y-auto p-8">
-      <h2 className="text-3xl font-bold text-gray-800 mb-6">
-        Editar Torneo: {tournament.name}
-      </h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-6">Crear Torneo</h2>
 
-      <Card className="max-w-4xl">
+      <Card className="max-w-3xl">
         <div className="space-y-4">
-          {matches.length === 0 && <p>No hay partidos para este torneo.</p>}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Nombre</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+              placeholder="Ej: Torneo Apertura"
+            />
+          </div>
 
-          {matches.map((match) => (
-            <div key={match.id} className="border p-4 rounded mb-4">
-              <div className="flex justify-between items-center mb-2">
-                <div className="text-lg font-semibold">{match.round_name}</div>
-                <div className="flex items-center gap-3">
-                  <a
-                    href={`/matches/edit/${match.id}`}
-                    className="text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Editar partido
-                  </a>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Categoría</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+            >
+              <option value="Mixto A">Mixto A</option>
+              <option value="Mixto B">Mixto B</option>
+              <option value="Masculino A">Masculino A</option>
+              <option value="Masculino B">Masculino B</option>
+              <option value="Femenino A">Femenino A</option>
+              <option value="Femenino B">Femenino B</option>
+            </select>
+          </div>
 
-                  <a
-                    href={`/matches/score/${match.id}`}
-                    className="text-indigo-600 hover:text-indigo-800 font-medium"
-                  >
-                    Editar resultado
-                  </a>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Estado</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+            >
+              <option value="open">Abierto (Inscripciones)</option>
+              <option value="ongoing">En curso</option>
+              <option value="finished">Finalizado</option>
+            </select>
+          </div>
 
-                  <button
-                    onClick={() => handleDeleteMatch(match.id)}
-                    className="text-red-600 hover:text-red-800 font-medium"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">Fecha Inicio</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2"
+            />
+          </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-2">
-                <div>
-                  <div className="font-semibold text-gray-900">{teamA(match)}</div>
-                </div>
-                <div>
-                  <div className="font-semibold text-gray-900">{teamB(match)}</div>
-                </div>
-              </div>
+          <div className="flex items-center gap-3 justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => router.push("/tournaments")}
+              className="px-4 py-2 rounded bg-gray-100 text-gray-800 hover:bg-gray-200"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
 
-              <div className="flex items-center gap-4">
-                <input
-                  type="text"
-                  defaultValue={match.score || ""}
-                  disabled={scoreUpdating === match.id}
-                  onBlur={(e) => {
-                    if (e.target.value !== match.score) {
-                      handleUpdateScore(match.id, e.target.value);
-                    }
-                  }}
-                  className="border border-gray-300 rounded p-1 w-24"
-                  placeholder="Marcador"
-                />
-                <div>
-                  <strong>Cancha:</strong> {match.court || "-"}
-                </div>
-                <div>
-                  <strong>Lugar:</strong> {match.place || "-"}
-                </div>
-                <div>
-                  <strong>Inicio:</strong>{" "}
-                  {match.start_time ? new Date(match.start_time).toLocaleString("es-ES") : "-"}
-                </div>
-              </div>
-            </div>
-          ))}
+            <button
+              type="button"
+              onClick={handleCreate}
+              className="px-5 py-2 rounded bg-green-600 text-white font-semibold hover:bg-green-700"
+              disabled={loading}
+            >
+              {loading ? "Creando..." : "Crear torneo"}
+            </button>
+          </div>
         </div>
       </Card>
     </main>

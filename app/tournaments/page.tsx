@@ -46,6 +46,24 @@ export default function TournamentsPage() {
     load();
   }, []);
 
+  const handleDeleteTournament = async (id: number) => {
+    const confirmed = window.confirm(
+      "¿Estás seguro de eliminar este torneo? Esta acción no se puede deshacer."
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("tournaments").delete().eq("id", id);
+
+    if (error) {
+      console.error(error);
+      toast.error("No se pudo eliminar el torneo");
+      return;
+    }
+
+    toast.success("Torneo eliminado correctamente");
+    setTournaments((prev) => prev.filter((t) => t.id !== id));
+  };
+
   return (
     <main className="p-4 md:p-10 pb-20 w-full overflow-x-hidden">
       <div className="max-w-5xl mx-auto">
@@ -101,12 +119,21 @@ export default function TournamentsPage() {
                   </Link>
 
                   {isAdmin && (
-                    <Link
-                      href={`/tournaments/edit/${t.id}`}
-                      className="text-xs font-semibold text-gray-700 hover:text-gray-900"
-                    >
-                      Editar
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/tournaments/edit/${t.id}`}
+                        className="text-xs font-semibold text-gray-700 hover:text-gray-900"
+                      >
+                        Editar
+                      </Link>
+
+                      <button
+                        onClick={() => handleDeleteTournament(t.id)}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   )}
                 </div>
               </article>

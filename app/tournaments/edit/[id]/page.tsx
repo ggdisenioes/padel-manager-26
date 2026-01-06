@@ -238,6 +238,26 @@ export default function EditTournament() {
 
           <h3 className="text-xl font-bold mb-4">Partidos del Torneo</h3>
 
+          {(isAdmin || isManager) && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => router.push(`/matches/create?tournamentId=${idNumber}`)}
+                className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-green-700 transition"
+              >
+                + Crear partido
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push(`/tournaments/${idNumber}/generate-matches`)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
+              >
+                Crear partidos aleatorios
+              </button>
+            </div>
+          )}
+
           {matches.length === 0 ? (
             <p className="text-gray-500 text-sm">No hay partidos asociados a este torneo.</p>
           ) : (

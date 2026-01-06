@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ============================= */
+/* FIX DEFINITIVO TEXTO GRIS iOS */
+/* ============================= */
+
+/* Forzamos color de texto real en mobile */
+/* Removed html, body color override */
+
+/* Inputs, selects y textareas */
+input,
+textarea,
+select {
+  color: #111827 !important; /* negro real */
+  background-color: #ffffff !important;
+  -webkit-text-fill-color: #111827 !important; /* CLAVE para iOS */
+  opacity: 1 !important;
+}
+
+/* Placeholders */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important; /* gray-400 */
+  opacity: 1 !important;
+}
+
+/* Labels y textos de formularios */
+label,
+form span,
+form p {
+  color: #111827 !important;
+}
+
+/* Evita estilos automáticos de Safari */
+input,
+textarea,
+select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ============================= */
+/* FIX DEFINITIVO iOS / MOBILE   */
+/* NO TOCAR COLORES DE BRANDING  */
+/* ============================= */
+
+/* Evitar gris automático de Safari iOS */
+@supports (-webkit-touch-callout: none) {
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Texto base: solo contenido, NO layout */
+  main h1,
+  main h2,
+  main h3,
+  main h4,
+  main h5,
+  main h6,
+  main p,
+  main span,
+  main div,
+  main li,
+  main td,
+  main th {
+    color: #111827 !important; /* gray-900 */
+    -webkit-text-fill-color: #111827 !important;
+    opacity: 1 !important;
+  }
+
+  /* Formularios */
+  input,
+  textarea,
+  select {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    background-color: #ffffff !important;
+    opacity: 1 !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #6b7280 !important; /* gray-500 */
+    opacity: 1 !important;
+  }
+}

@@ -49,36 +49,54 @@ export default function RankingPage() {
       return;
     }
 
-    // Contar victorias por jugador
-    const winsMap: Record<number, number> = {};
+    // Contar partidos jugados, victorias y derrotas por jugador
+    const statsMap: Record<
+      number,
+      { wins: number; losses: number; played: number }
+    > = {};
 
     (matches || []).forEach((match: any) => {
+      if (!match.player_1_a || !match.player_2_a || !match.player_1_b || !match.player_2_b) return;
       if (!match.winner || match.winner === "pending") return;
 
+      const teamA = [match.player_1_a, match.player_2_a];
+      const teamB = [match.player_1_b, match.player_2_b];
+
+      [...teamA, ...teamB].forEach((id: number) => {
+        if (!statsMap[id]) {
+          statsMap[id] = { wins: 0, losses: 0, played: 0 };
+        }
+        statsMap[id].played += 1;
+      });
+
       if (match.winner === "A") {
-        [match.player_1_a, match.player_2_a].forEach((id: number) => {
-          if (!id) return;
-          winsMap[id] = (winsMap[id] || 0) + 1;
+        teamA.forEach((id: number) => {
+          statsMap[id].wins += 1;
+        });
+        teamB.forEach((id: number) => {
+          statsMap[id].losses += 1;
         });
       }
 
       if (match.winner === "B") {
-        [match.player_1_b, match.player_2_b].forEach((id: number) => {
-          if (!id) return;
-          winsMap[id] = (winsMap[id] || 0) + 1;
+        teamB.forEach((id: number) => {
+          statsMap[id].wins += 1;
+        });
+        teamA.forEach((id: number) => {
+          statsMap[id].losses += 1;
         });
       }
     });
 
-    // Crear array de ranking con puntos (3 pts por victoria)
     const ranking: RankedPlayer[] = (playerData || []).map((p: any) => {
-      const wins = winsMap[p.id] || 0;
-      const points = wins * 3;
+      const stats = statsMap[p.id] || { wins: 0, losses: 0, played: 0 };
+      const points = stats.wins * 3 + stats.losses * 1;
+
       return {
         id: p.id,
         name: p.name,
         avatar_url: p.avatar_url,
-        wins,
+        wins: stats.wins,
         points,
       };
     });

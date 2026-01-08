@@ -235,7 +235,7 @@ export default function DashboardPage() {
 
       setRecentLogs(logs || []);
 
-      // 5.5) Ranking real
+      // 5.5) Ranking real (3 pts victoria, 1 pt derrota)
       const { data: rankingMatches } = await supabase
         .from("matches")
         .select("winner, player_1_a, player_2_a, player_1_b, player_2_b")
@@ -244,15 +244,13 @@ export default function DashboardPage() {
       const rankingMap: Record<number, RankingItem> = {};
 
       (rankingMatches || []).forEach((m) => {
-        const winners =
-          m.winner === "A"
-            ? [m.player_1_a, m.player_2_a]
-            : m.winner === "B"
-            ? [m.player_1_b, m.player_2_b]
-            : [];
+        const teamA = [m.player_1_a, m.player_2_a].filter(Boolean) as number[];
+        const teamB = [m.player_1_b, m.player_2_b].filter(Boolean) as number[];
 
-        winners.forEach((pid: number | null) => {
-          if (!pid) return;
+        const winners = m.winner === "A" ? teamA : m.winner === "B" ? teamB : [];
+        const losers = m.winner === "A" ? teamB : m.winner === "B" ? teamA : [];
+
+        winners.forEach((pid) => {
           if (!rankingMap[pid]) {
             rankingMap[pid] = {
               player_id: pid,
@@ -262,13 +260,25 @@ export default function DashboardPage() {
             };
           }
           rankingMap[pid].wins += 1;
-          rankingMap[pid].points += 100;
+          rankingMap[pid].points += 3;
+        });
+
+        losers.forEach((pid) => {
+          if (!rankingMap[pid]) {
+            rankingMap[pid] = {
+              player_id: pid,
+              name: localPlayerMap[pid] || `Jugador ${pid}`,
+              points: 0,
+              wins: 0,
+            };
+          }
+          rankingMap[pid].points += 1;
         });
       });
 
       setTopRanking(
         Object.values(rankingMap)
-          .sort((a, b) => b.points - a.points)
+          .sort((a, b) => b.points - a.points || b.wins - a.wins)
           .slice(0, 5)
       );
 

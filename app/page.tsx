@@ -52,6 +52,10 @@ type RankingItem = {
   name: string;
   points: number;
   wins: number;
+  played: number;
+  losses: number;
+  games_for: number;
+  games_against: number;
 };
 
 type FinishedMatch = {
@@ -78,6 +82,7 @@ export default function DashboardPage() {
   const isUser = !isAdmin && !isManager;
 
   const [topRanking, setTopRanking] = useState<RankingItem[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
   const [recentResults, setRecentResults] = useState<FinishedMatch[]>([]);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
@@ -238,18 +243,34 @@ export default function DashboardPage() {
       // 5.5) Ranking real (3 pts victoria, 1 pt derrota)
       const { data: rankingMatches } = await supabase
         .from("matches")
-        .select("winner, player_1_a, player_2_a, player_1_b, player_2_b")
+        .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, score, tournament_id")
         .neq("winner", "pending");
+
+      // Filter by tournament if selected
+      const filteredRankingMatches = selectedTournamentId
+        ? (rankingMatches || []).filter((m) => m.tournament_id === selectedTournamentId)
+        : rankingMatches || [];
 
       const rankingMap: Record<number, RankingItem> = {};
 
-      (rankingMatches || []).forEach((m) => {
+      (filteredRankingMatches).forEach((m) => {
         const teamA = [m.player_1_a, m.player_2_a].filter(Boolean) as number[];
         const teamB = [m.player_1_b, m.player_2_b].filter(Boolean) as number[];
 
         const winners = m.winner === "A" ? teamA : m.winner === "B" ? teamB : [];
         const losers = m.winner === "A" ? teamB : m.winner === "B" ? teamA : [];
 
+        // Parse score for games_for/games_against
+        // Accepts "6-4", "6 4", "6:4", "6,4" etc, only first two numbers
+        let teamAScore = 0, teamBScore = 0;
+        if (typeof m.score === "string") {
+          const match = m.score.match(/(\d+)[\s\-:,]+(\d+)/);
+          if (match) {
+            teamAScore = parseInt(match[1], 10);
+            teamBScore = parseInt(match[2], 10);
+          }
+        }
+        // Winners
         winners.forEach((pid) => {
           if (!rankingMap[pid]) {
             rankingMap[pid] = {
@@ -257,12 +278,25 @@ export default function DashboardPage() {
               name: localPlayerMap[pid] || `Jugador ${pid}`,
               points: 0,
               wins: 0,
+              played: 0,
+              losses: 0,
+              games_for: 0,
+              games_against: 0,
             };
           }
           rankingMap[pid].wins += 1;
           rankingMap[pid].points += 3;
+          rankingMap[pid].played += 1;
+          // Games for/against
+          if (m.winner === "A") {
+            rankingMap[pid].games_for += teamAScore;
+            rankingMap[pid].games_against += teamBScore;
+          } else if (m.winner === "B") {
+            rankingMap[pid].games_for += teamBScore;
+            rankingMap[pid].games_against += teamAScore;
+          }
         });
-
+        // Losers
         losers.forEach((pid) => {
           if (!rankingMap[pid]) {
             rankingMap[pid] = {
@@ -270,9 +304,23 @@ export default function DashboardPage() {
               name: localPlayerMap[pid] || `Jugador ${pid}`,
               points: 0,
               wins: 0,
+              played: 0,
+              losses: 0,
+              games_for: 0,
+              games_against: 0,
             };
           }
           rankingMap[pid].points += 1;
+          rankingMap[pid].played += 1;
+          rankingMap[pid].losses += 1;
+          // Games for/against
+          if (m.winner === "A") {
+            rankingMap[pid].games_for += teamBScore;
+            rankingMap[pid].games_against += teamAScore;
+          } else if (m.winner === "B") {
+            rankingMap[pid].games_for += teamAScore;
+            rankingMap[pid].games_against += teamBScore;
+          }
         });
       });
 
@@ -289,7 +337,7 @@ export default function DashboardPage() {
     };
 
     loadData();
-  }, [calculateAlerts]);
+  }, [calculateAlerts, selectedTournamentId]);
 
 
   useEffect(() => {
@@ -671,7 +719,38 @@ export default function DashboardPage() {
           {/* Ranking */}
           <div>
             <h2 className="text-lg font-bold mb-4">Top Ranking</h2>
+            {/* Tournament selector */}
+            <div className="mb-2">
+              <label htmlFor="tournament-selector" className="block text-xs font-medium text-gray-500 mb-1">
+                Torneo
+              </label>
+              <select
+                id="tournament-selector"
+                value={selectedTournamentId ?? ""}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSelectedTournamentId(val === "" ? null : Number(val));
+                }}
+                className="rounded-md border-gray-300 py-1 px-2 text-sm"
+              >
+                <option value="">Todos los torneos</option>
+                {Object.entries(tournamentMap).map(([tid, tname]) => (
+                  <option key={tid} value={tid}>{tname}</option>
+                ))}
+              </select>
+            </div>
             <div className="bg-white rounded-xl border shadow-sm divide-y">
+              {/* Table header */}
+              <div className="flex font-semibold text-xs text-gray-600 px-4 py-2 bg-gray-50">
+                <div className="w-6 text-center"></div>
+                <div className="flex-1">Jugador</div>
+                <div className="w-10 text-center">PJ</div>
+                <div className="w-10 text-center">PG</div>
+                <div className="w-10 text-center">PP</div>
+                <div className="w-10 text-center">GF</div>
+                <div className="w-10 text-center">GC</div>
+                <div className="w-12 text-center">Pts</div>
+              </div>
               {topRanking.map((r, idx) => {
                 const medal =
                   idx === 0 ? "🥇" :
@@ -683,30 +762,20 @@ export default function DashboardPage() {
                   <Link
                     key={r.player_id}
                     href={`/players/${r.player_id}`}
-                    className="flex items-center justify-between p-4 hover:bg-gray-50"
+                    className="flex items-center px-4 py-2 hover:bg-gray-50"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-6 text-center text-lg font-bold text-gray-500">
-                        {medal ?? idx + 1}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-sm text-gray-900">
-                          {r.name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {r.wins} victorias
-                        </p>
-                      </div>
+                    <div className="w-6 text-center text-lg font-bold text-gray-500">
+                      {medal ?? idx + 1}
                     </div>
-
-                    <div className="text-right">
-                      <p className="font-bold text-green-600 text-lg">
-                        {r.points}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        puntos
-                      </p>
+                    <div className="flex-1">
+                      <span className="font-semibold text-sm text-gray-900">{r.name}</span>
                     </div>
+                    <div className="w-10 text-center">{r.played}</div>
+                    <div className="w-10 text-center">{r.wins}</div>
+                    <div className="w-10 text-center">{r.losses}</div>
+                    <div className="w-10 text-center">{r.games_for}</div>
+                    <div className="w-10 text-center">{r.games_against}</div>
+                    <div className="w-12 text-center font-bold text-green-600">{r.points}</div>
                   </Link>
                 );
               })}

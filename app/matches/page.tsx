@@ -9,20 +9,23 @@ import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
 
+type PlayerRef = {
+  id: number;
+  name: string;
+};
+
 type Match = {
   id: number;
   start_time: string | null;
   tournament_id: number | null;
   round_name: string | null;
-  player_1_a: number | null;
-  player_2_a: number | null;
-  player_1_b: number | null;
-  player_2_b: number | null;
   score: string | null;
   winner: string | null;
+  player_1_a: PlayerRef | null;
+  player_2_a: PlayerRef | null;
+  player_1_b: PlayerRef | null;
+  player_2_b: PlayerRef | null;
 };
-
-type PlayerMap = Record<number, string>;
 
 type View = "pending" | "finished" | "all";
 
@@ -31,7 +34,6 @@ export default function MatchesPage() {
   const searchParams = useSearchParams();
 
   const [matches, setMatches] = useState<Match[]>([]);
-  const [players, setPlayers] = useState<PlayerMap>({});
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("pending");
 
@@ -47,21 +49,22 @@ export default function MatchesPage() {
     const loadData = async () => {
       setLoading(true);
 
-      const [{ data: matchesData, error: matchError }, { data: playersData, error: playersError }] =
-        await Promise.all([
-          supabase
-            .from("matches")
-            .select(
-              "id, start_time, tournament_id, round_name, player_1_a, player_2_a, player_1_b, player_2_b, score, winner"
-            )
-            .order("start_time", { ascending: true }),
-          supabase.from("players").select("id, name"),
-        ]);
-
-      if (playersError) {
-        // No bloqueamos la pantalla por esto, pero avisamos.
-        console.error(playersError);
-      }
+      const { data: matchesData, error: matchError } = await supabase
+        .from("matches")
+        .select(`
+          id,
+          start_time,
+          tournament_id,
+          round_name,
+          score,
+          winner,
+          player_1_a:players!matches_player_1_a_fkey ( id, name ),
+          player_2_a:players!matches_player_2_a_fkey ( id, name ),
+          player_1_b:players!matches_player_1_b_fkey ( id, name ),
+          player_2_b:players!matches_player_2_b_fkey ( id, name )
+        `)
+        .order("start_time", { ascending: true })
+        .returns<Match[]>();
 
       if (matchError) {
         console.error(matchError);
@@ -71,13 +74,7 @@ export default function MatchesPage() {
         return;
       }
 
-      const playerMap: PlayerMap = {};
-      (playersData || []).forEach((p: any) => {
-        playerMap[p.id] = p.name;
-      });
-
-      setPlayers(playerMap);
-      setMatches(matchesData || []);
+      setMatches((matchesData ?? []) as Match[]);
       setLoading(false);
     };
 
@@ -128,8 +125,6 @@ export default function MatchesPage() {
     // pending
     return matches.filter((m) => !isPlayed(m));
   }, [matches, view]);
-
-  const name = (id: number | null) => (id ? players[id] || `ID ${id}` : "-");
 
   if (roleLoading) {
     return (
@@ -205,8 +200,8 @@ export default function MatchesPage() {
 
               <div className="flex items-center justify-between text-center">
                 <div className="flex-1">
-                  <p className="font-semibold text-lg">{name(m.player_1_a)}</p>
-                  <p className="text-sm text-gray-500">{name(m.player_2_a)}</p>
+                  <p className="font-semibold text-lg">{m.player_1_a?.name || "-"}</p>
+                  <p className="text-sm text-gray-500">{m.player_2_a?.name || "-"}</p>
                 </div>
 
                 <div className="mx-6">
@@ -216,8 +211,8 @@ export default function MatchesPage() {
                 </div>
 
                 <div className="flex-1">
-                  <p className="font-semibold text-lg">{name(m.player_1_b)}</p>
-                  <p className="text-sm text-gray-500">{name(m.player_2_b)}</p>
+                  <p className="font-semibold text-lg">{m.player_1_b?.name || "-"}</p>
+                  <p className="text-sm text-gray-500">{m.player_2_b?.name || "-"}</p>
                 </div>
               </div>
 

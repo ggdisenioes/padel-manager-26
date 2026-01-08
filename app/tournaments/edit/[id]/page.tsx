@@ -25,18 +25,16 @@ export default function EditTournament() {
   const { isAdmin, isManager } = useRole();
   const [matches, setMatches] = useState<any[]>([]);
 
-  const playerLabel = (p: any, id?: number | null) =>
-    p?.name ?? (id ? `#${id}` : "-");
+  const playerLabel = (p: any) => {
+    if (!p || !p.name) return "Jugador no disponible";
+    return p.name;
+  };
 
   const teamA = (m: any) =>
-    `${playerLabel(m.p1a, m.player_1_a)}${
-      m.player_2_a ? ` / ${playerLabel(m.p2a, m.player_2_a)}` : ""
-    }`;
+    `${playerLabel(m.p1a)}${m.p2a ? ` / ${playerLabel(m.p2a)}` : ""}`;
 
   const teamB = (m: any) =>
-    `${playerLabel(m.p1b, m.player_1_b)}${
-      m.player_2_b ? ` / ${playerLabel(m.p2b, m.player_2_b)}` : ""
-    }`;
+    `${playerLabel(m.p1b)}${m.p2b ? ` / ${playerLabel(m.p2b)}` : ""}`;
 
   // Cargar datos del torneo
   useEffect(() => {

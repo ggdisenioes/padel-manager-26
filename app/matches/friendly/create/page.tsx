@@ -1,211 +1,198 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast';
-import Card from '../../../components/Card';
-import { supabase } from '../../../lib/supabase';
-import { useRole } from '../../../hooks/useRole';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+import { supabase } from "../../../lib/supabase";
+import { useRole } from "../../../hooks/useRole";
 
-interface Player {
+type Player = {
   id: number;
   name: string;
-}
+};
 
-export default function CreateFriendlyMatch() {
+export default function CreateFriendlyMatchPage() {
   const router = useRouter();
-  const { role } = useRole();
+  const { isAdmin, isManager, loading: roleLoading } = useRole();
 
   const [players, setPlayers] = useState<Player[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    date: '',
-    time: '',
-    place: '',
-    court: '',
-    teamA1: '',
-    teamA2: '',
-    teamB1: '',
-    teamB2: '',
-  });
-
   useEffect(() => {
-    fetchPlayers();
+    const loadPlayers = async () => {
+      const { data, error } = await supabase
+        .from("players")
+        .select("id, name")
+        .eq("is_approved", true)
+        .order("name");
+
+      if (error) {
+        console.error(error);
+        toast.error("No se pudieron cargar los jugadores");
+        return;
+      }
+
+      setPlayers(data || []);
+    };
+
+    loadPlayers();
   }, []);
 
-  async function fetchPlayers() {
-    const { data, error } = await supabase
-      .from('players')
-      .select('id, name')
-      .order('name');
-
-    if (error) {
-      toast.error('Error cargando jugadores');
-      return;
-    }
-
-    setPlayers(data || []);
+  if (roleLoading) {
+    return (
+      <main className="max-w-3xl mx-auto p-6">
+        <p className="text-gray-500">Cargando permisos…</p>
+      </main>
+    );
   }
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  if (!isAdmin && !isManager) {
+    return (
+      <main className="max-w-3xl mx-auto p-6">
+        <p className="text-red-600 font-semibold">
+          No tenés permisos para crear partidos amistosos.
+        </p>
+      </main>
+    );
   }
 
-  async function handleSubmit() {
-    if (role === 'user') {
-      toast.error('No tenés permisos para crear partidos');
-      return;
-    }
+  const togglePlayer = (id: number) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
 
-    const {
-      date,
-      time,
-      place,
-      court,
-      teamA1,
-      teamA2,
-      teamB1,
-      teamB2,
-    } = form;
+  const isOdd = selected.length % 2 !== 0;
+  const canCreate = selected.length >= 4 && !isOdd;
 
-    if (
-      !date ||
-      !time ||
-      !teamA1 ||
-      !teamA2 ||
-      !teamB1 ||
-      !teamB2
-    ) {
-      toast.error('Completá todos los campos obligatorios');
+  const handleCreate = async () => {
+    if (!canCreate) {
+      toast.error(
+        "Para 2vs2 necesitás un número PAR de jugadores (mínimo 4)."
+      );
       return;
     }
 
     setLoading(true);
 
-    const start_time = new Date(`${date}T${time}:00`).toISOString();
+    const shuffled = [...selected].sort(() => Math.random() - 0.5);
 
-    const { error } = await supabase.from('matches').insert({
-      tournament_id: null,
-      round_name: 'Amistoso',
-      place: place || null,
-      court: court || null,
-      start_time,
-      player_1_a: Number(teamA1),
-      player_2_a: Number(teamA2),
-      player_1_b: Number(teamB1),
-      player_2_b: Number(teamB2),
-      score: null,
-      winner: 'pending',
-    });
+    const inserts = [];
 
-    setLoading(false);
+    for (let i = 0; i < shuffled.length; i += 4) {
+      const group = shuffled.slice(i, i + 4);
+      if (group.length < 4) break;
+
+      inserts.push({
+        tournament_id: null,
+        round_name: "Partido amistoso",
+        start_time: new Date().toISOString(),
+        player_1_a: group[0],
+        player_2_a: group[1],
+        player_1_b: group[2],
+        player_2_b: group[3],
+        winner: null,
+      });
+    }
+
+    const { error } = await supabase.from("matches").insert(inserts);
 
     if (error) {
-      toast.error('Error creando partido amistoso');
+      console.error(error);
+      toast.error("Error al crear los partidos amistosos");
+      setLoading(false);
       return;
     }
 
-    toast.success('Partido amistoso creado');
-    router.push('/matches/friendly');
-  }
+    toast.success("Partidos amistosos creados");
+    router.push("/matches");
+  };
 
   return (
-    <Card title="Crear Partido Amistoso">
-      <div className="grid grid-cols-2 gap-4">
-        <input
-          type="date"
-          name="date"
-          value={form.date}
-          onChange={handleChange}
-        />
+    <main className="max-w-3xl mx-auto p-6 space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">Crear partido amistoso</h1>
+        <p className="text-sm text-gray-500">
+          Los partidos amistosos no pertenecen a ningún torneo.
+        </p>
+      </header>
 
-        <input
-          type="time"
-          name="time"
-          value={form.time}
-          onChange={handleChange}
-        />
-
-        <input
-          type="text"
-          name="place"
-          placeholder="Lugar (opcional)"
-          value={form.place}
-          onChange={handleChange}
-        />
-
-        <input
-          type="number"
-          name="court"
-          placeholder="Pista (opcional)"
-          value={form.court}
-          onChange={handleChange}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-6 mt-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
         <div>
-          <h3 className="font-semibold mb-2">Pareja A</h3>
-          <select name="teamA1" onChange={handleChange} value={form.teamA1}>
-            <option value="">Jugador 1</option>
-            {players.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <h2 className="font-semibold mb-2">
+            Seleccioná jugadores (mínimo 4, número par)
+          </h2>
 
-          <select name="teamA2" onChange={handleChange} value={form.teamA2}>
-            <option value="">Jugador 2</option>
-            {players.map(p => (
-              <option key={p.id} value={p.id}>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {players.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => togglePlayer(p.id)}
+                className={`px-3 py-2 rounded-md border text-sm text-left transition
+                  ${
+                    selected.includes(p.id)
+                      ? "bg-green-600 text-white border-green-600"
+                      : "bg-white hover:bg-gray-50"
+                  }`}
+              >
                 {p.name}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
+
+          {isOdd && (
+            <p className="mt-3 text-sm text-orange-600 font-medium">
+              Para 2vs2 necesitás un número PAR de jugadores (se arman parejas).
+            </p>
+          )}
         </div>
 
-        <div>
-          <h3 className="font-semibold mb-2">Pareja B</h3>
-          <select name="teamB1" onChange={handleChange} value={form.teamB1}>
-            <option value="">Jugador 1</option>
-            {players.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+        {canCreate && (
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="font-semibold mb-2">Vista previa de parejas</h3>
+            <ul className="space-y-2 text-sm">
+              {(() => {
+                const shuffled = [...selected];
+                const pairs = [];
+                for (let i = 0; i < shuffled.length; i += 4) {
+                  const g = shuffled.slice(i, i + 4);
+                  if (g.length === 4) {
+                    pairs.push(g);
+                  }
+                }
+                return pairs.map((g, idx) => (
+                  <li key={idx}>
+                    <strong>Partido {idx + 1}:</strong>{" "}
+                    {players.find((p) => p.id === g[0])?.name} &{" "}
+                    {players.find((p) => p.id === g[1])?.name} vs{" "}
+                    {players.find((p) => p.id === g[2])?.name} &{" "}
+                    {players.find((p) => p.id === g[3])?.name}
+                  </li>
+                ));
+              })()}
+            </ul>
+          </div>
+        )}
 
-          <select name="teamB2" onChange={handleChange} value={form.teamB2}>
-            <option value="">Jugador 2</option>
-            {players.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => router.back()}
+            className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 transition"
+          >
+            Cancelar
+          </button>
+
+          <button
+            onClick={handleCreate}
+            disabled={loading}
+            className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-green-700 transition disabled:opacity-50"
+          >
+            {loading ? "Creando…" : "Crear partidos amistosos"}
+          </button>
         </div>
       </div>
-
-      <div className="flex justify-end gap-3 mt-6">
-        <button
-          className="btn-secondary"
-          onClick={() => router.back()}
-        >
-          Cancelar
-        </button>
-
-        <button
-          className="btn-primary"
-          disabled={loading}
-          onClick={handleSubmit}
-        >
-          {loading ? 'Creando...' : 'Crear partido'}
-        </button>
-      </div>
-    </Card>
+    </main>
   );
 }

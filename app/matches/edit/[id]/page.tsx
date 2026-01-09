@@ -294,9 +294,9 @@ export default function EditMatch() {
                     <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
                         {/* PARELLA 1 */}
                         <div className="flex-1 w-full bg-gray-50 p-5 rounded-xl border-l-4 border-l-blue-500 shadow-sm">
-                            <h3 className="font-bold text-blue-700 mb-4 border-b pb-2">PARELLA 1</h3>
+                            <h3 className="font-bold text-blue-700 mb-4 border-b pb-2">PAREJA 1</h3>
                             <div className="space-y-4">
-                                <PlayerSelect label="Jugador 1 (Revers)" value={formData.player_1_a} onChange={(val: string) => setFormData({...formData, player_1_a: val})} />
+                                <PlayerSelect label="Jugador 1 (Reves)" value={formData.player_1_a} onChange={(val: string) => setFormData({...formData, player_1_a: val})} />
                                 <PlayerSelect label="Jugador 2 (Drive)" value={formData.player_2_a} onChange={(val: string) => setFormData({...formData, player_2_a: val})} />
                             </div>
                         </div>
@@ -304,9 +304,9 @@ export default function EditMatch() {
                         
                         {/* PARELLA 2 */}
                         <div className="flex-1 w-full bg-gray-50 p-5 rounded-xl border-r-4 border-r-red-500 shadow-sm text-right">
-                            <h3 className="font-bold text-red-700 mb-4 border-b pb-2">PARELLA 2</h3>
+                            <h3 className="font-bold text-red-700 mb-4 border-b pb-2">PAREJA 2</h3>
                             <div className="space-y-4">
-                                <PlayerSelect label="Jugador 1 (Revers)" value={formData.player_1_b} onChange={(val: string) => setFormData({...formData, player_1_b: val})} />
+                                <PlayerSelect label="Jugador 1 (Reves)" value={formData.player_1_b} onChange={(val: string) => setFormData({...formData, player_1_b: val})} />
                                 <PlayerSelect label="Jugador 2 (Drive)" value={formData.player_2_b} onChange={(val: string) => setFormData({...formData, player_2_b: val})} />
                             </div>
                         </div>

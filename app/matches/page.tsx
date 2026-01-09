@@ -27,6 +27,12 @@ type Match = {
   player_2_b: PlayerRef | null;
 };
 
+type Tournament = {
+  id: number;
+  name: string;
+  category: string | null;
+};
+
 type View = "pending" | "finished" | "all";
 
 export default function MatchesPage() {
@@ -36,6 +42,10 @@ export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("pending");
+
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [filterTournament, setFilterTournament] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
 
   // Si entran con /matches?status=pending, forzamos la vista pendientes
   useEffect(() => {
@@ -73,6 +83,13 @@ export default function MatchesPage() {
         setLoading(false);
         return;
       }
+
+      const { data: tournamentsData } = await supabase
+        .from("tournaments")
+        .select("id, name, category")
+        .order("name");
+
+      setTournaments(tournamentsData ?? []);
 
       setMatches((matchesData ?? []) as Match[]);
       setLoading(false);
@@ -120,11 +137,30 @@ export default function MatchesPage() {
   };
 
   const filteredMatches = useMemo(() => {
-    if (view === "all") return matches;
-    if (view === "finished") return matches.filter(isPlayed);
-    // pending
-    return matches.filter((m) => !isPlayed(m));
-  }, [matches, view]);
+    let result = matches;
+
+    if (view === "finished") result = result.filter(isPlayed);
+    if (view === "pending") result = result.filter((m) => !isPlayed(m));
+
+    if (filterTournament !== "all") {
+      if (filterTournament === "friendly") {
+        result = result.filter((m) => m.tournament_id === null);
+      } else {
+        result = result.filter(
+          (m) => String(m.tournament_id) === filterTournament
+        );
+      }
+    }
+
+    if (filterCategory !== "all") {
+      result = result.filter(
+        (m) =>
+          m.round_name?.toLowerCase() === filterCategory.toLowerCase()
+      );
+    }
+
+    return result;
+  }, [matches, view, filterTournament, filterCategory]);
 
   if (roleLoading) {
     return (
@@ -168,7 +204,7 @@ export default function MatchesPage() {
           )}
           {(isAdmin || isManager) && (
             <Link
-              href="/matches/create?type=friendly"
+              href="/matches/friendly/create"
               className="bg-green-600 text-white px-4 py-1 rounded border border-green-600 hover:bg-green-700 transition text-sm font-semibold"
             >
               + Crear partido amistoso
@@ -176,6 +212,68 @@ export default function MatchesPage() {
           )}
         </div>
       </header>
+
+      <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">
+          Filtros
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Torneo */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Torneo
+            </label>
+            <select
+              value={filterTournament}
+              onChange={(e) => setFilterTournament(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="all">Todos</option>
+              <option value="friendly">Amistosos</option>
+              {tournaments.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ronda / Fase */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Ronda / Fase
+            </label>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="all">Todas</option>
+              <option value="grupos">Grupos</option>
+              <option value="cuartos">Cuartos</option>
+              <option value="semifinal">Semifinal</option>
+              <option value="final">Final</option>
+              <option value="amistoso">Amistoso</option>
+            </select>
+          </div>
+
+          {/* Categoría */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Categoría
+            </label>
+            <select
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="all">Todas</option>
+              <option value="mixto">Mixto</option>
+              <option value="masculino">Masculino</option>
+              <option value="femenino">Femenino</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
       {loading ? (
         <p className="text-gray-500">Cargando partidos…</p>

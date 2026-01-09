@@ -334,7 +334,6 @@ export default function DashboardPage() {
             if (b.games_for !== a.games_for) return b.games_for - a.games_for;
             return b.wins - a.wins;
           })
-          .slice(0, 5)
       );
 
       // 6) Alertas inteligentes

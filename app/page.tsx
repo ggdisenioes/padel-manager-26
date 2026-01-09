@@ -326,7 +326,14 @@ export default function DashboardPage() {
 
       setTopRanking(
         Object.values(rankingMap)
-          .sort((a, b) => b.points - a.points || b.wins - a.wins)
+          .sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points;
+            const diffA = a.games_for - a.games_against;
+            const diffB = b.games_for - b.games_against;
+            if (diffB !== diffA) return diffB - diffA;
+            if (b.games_for !== a.games_for) return b.games_for - a.games_for;
+            return b.wins - a.wins;
+          })
           .slice(0, 5)
       );
 
@@ -739,9 +746,9 @@ export default function DashboardPage() {
                 ))}
               </select>
             </div>
-            <div className="bg-white rounded-xl border shadow-sm divide-y">
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               {/* Table header */}
-              <div className="flex font-semibold text-xs text-gray-600 px-4 py-2 bg-gray-50">
+              <div className="flex font-semibold text-xs text-gray-600 px-4 py-2 bg-gray-50 border-b border-gray-200">
                 <div className="w-6 text-center"></div>
                 <div className="flex-1">Jugador</div>
                 <div className="w-10 text-center">PJ</div>
@@ -762,7 +769,7 @@ export default function DashboardPage() {
                   <Link
                     key={r.player_id}
                     href={`/players/${r.player_id}`}
-                    className="flex items-center px-4 py-2 hover:bg-gray-50"
+                    className="flex items-center px-4 py-3 border-b last:border-b-0 border-gray-100 hover:bg-gray-50 transition"
                   >
                     <div className="w-6 text-center text-lg font-bold text-gray-500">
                       {medal ?? idx + 1}

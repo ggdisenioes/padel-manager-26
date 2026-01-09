@@ -20,6 +20,9 @@ export default function RankingPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const [tournaments, setTournaments] = useState<{ id: number; name: string }[]>([]);
+  const [selectedTournament, setSelectedTournament] = useState<number | "all">("all");
+
   // Cargar ranking desde Supabase (jugadores + partidos)
   const loadRanking = useCallback(async () => {
     setLoading(true);
@@ -37,10 +40,22 @@ export default function RankingPage() {
       return;
     }
 
-    // Partidos
-    const { data: matches, error: matchError } = await supabase
+    const { data: tournamentData } = await supabase
+      .from("tournaments")
+      .select("id, name")
+      .order("start_date", { ascending: false });
+
+    setTournaments(tournamentData || []);
+
+    let matchQuery = supabase
       .from("matches")
-      .select("winner, player_1_a, player_2_a, player_1_b, player_2_b");
+      .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, tournament_id");
+
+    if (selectedTournament !== "all") {
+      matchQuery = matchQuery.eq("tournament_id", selectedTournament);
+    }
+
+    const { data: matches, error: matchError } = await matchQuery;
 
     if (matchError) {
       console.error("Error cargando partidos:", matchError);
@@ -101,12 +116,16 @@ export default function RankingPage() {
       };
     });
 
-    // Ordenar por puntos desc
-    ranking.sort((a, b) => b.points - a.points);
+    // Ordenar por puntos desc, luego victorias, luego nombre
+    ranking.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      return a.name.localeCompare(b.name);
+    });
 
     setPlayers(ranking);
     setLoading(false);
-  }, []);
+  }, [selectedTournament]);
 
   useEffect(() => {
     loadRanking();
@@ -127,7 +146,7 @@ export default function RankingPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadRanking]);
+  }, [loadRanking, selectedTournament]);
 
   const podium = players.slice(0, 3);
   const rest = players.slice(3);
@@ -144,8 +163,26 @@ export default function RankingPage() {
           <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 dark:text-white tracking-wide">
             Ranking de Jugadores
           </h1>
+          <div className="mt-4 flex justify-center">
+            <select
+              value={selectedTournament}
+              onChange={(e) =>
+                setSelectedTournament(
+                  e.target.value === "all" ? "all" : Number(e.target.value)
+                )
+              }
+              className="border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="all">Todos los torneos</option>
+              {tournaments.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-            Puntos calculados automáticamente según las victorias registradas.
+            Puntos calculados automáticamente: 3 por victoria y 1 por derrota.
           </p>
         </div>
 

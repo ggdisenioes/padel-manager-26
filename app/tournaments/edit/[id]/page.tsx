@@ -11,8 +11,7 @@ export default function EditTournament() {
   const router = useRouter();
   const params = useParams();
 
-  const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
-  const idNumber = idParam ? Number(idParam) : null;
+  const idNumber = Number(params.id);
 
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -21,6 +20,7 @@ export default function EditTournament() {
     start_date: "",
     status: "abierto",
   });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const { isAdmin, isManager } = useRole();
   const [matches, setMatches] = useState<any[]>([]);
@@ -36,35 +36,45 @@ export default function EditTournament() {
   const teamB = (m: any) =>
     `${playerLabel(m.p1b)}${m.p2b ? ` / ${playerLabel(m.p2b)}` : ""}`;
 
-  // Cargar datos del torneo
+  // Cargar datos del torneo y partidos
   useEffect(() => {
-    const getTournament = async () => {
-      if (!idNumber) {
-        alert("ID de torneo inválido");
-        router.push("/tournaments");
+    const getTournamentAndMatches = async () => {
+      if (!idNumber || isNaN(idNumber)) {
+        setErrorMsg("ID de torneo inválido");
+        setLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from("tournaments")
-        .select("*")
-        .eq("id", idNumber)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from("tournaments")
+          .select("*")
+          .eq("id", idNumber)
+          .single();
 
-      if (error) {
-        console.error("Error cargando torneo:", error);
-        alert("Error cargando torneo");
-        router.push("/tournaments");
-      } else if (data) {
-        setFormData({
-          name: data.name || "",
-          category: data.category || "",
-          start_date: data.start_date
-            ? data.start_date.split("T")[0]
-            : "",
-          status: data.status || "abierto",
-        });
+        if (error) {
+          console.error("Error cargando torneo:", error);
+          setErrorMsg("Error cargando torneo");
+          setLoading(false);
+          return;
+        }
 
+        if (data) {
+          setFormData({
+            name: data.name || "",
+            category: data.category || "",
+            start_date: data.start_date ? data.start_date.split("T")[0] : "",
+            status: data.status || "abierto",
+          });
+        }
+      } catch (err) {
+        console.error("Excepción al cargar torneo:", err);
+        setErrorMsg("Error inesperado cargando torneo");
+        setLoading(false);
+        return;
+      }
+
+      try {
         const { data: matchesData, error: matchesError } = await supabase
           .from("matches")
           .select(`
@@ -80,22 +90,26 @@ export default function EditTournament() {
 
         if (matchesError) {
           console.error("Error cargando partidos del torneo:", matchesError);
+          setMatches([]);
         } else {
-          setMatches(matchesData || []);
+          setMatches(matchesData ?? []);
         }
+      } catch (err) {
+        console.error("Excepción al cargar partidos:", err);
+        setMatches([]);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
-    if (idNumber) getTournament();
-  }, [idNumber, router]);
+    getTournamentAndMatches();
+  }, [idNumber]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    if (!idNumber) {
+    if (!idNumber || isNaN(idNumber)) {
       alert("ID de torneo inválido");
       setLoading(false);
       return;
@@ -140,6 +154,8 @@ export default function EditTournament() {
     <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20">
       {loading ? (
         <p className="text-gray-600">Cargando torneo...</p>
+      ) : errorMsg ? (
+        <p className="text-red-600 font-semibold">{errorMsg}</p>
       ) : (
         <Card className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold mb-4">Editar torneo</h2>

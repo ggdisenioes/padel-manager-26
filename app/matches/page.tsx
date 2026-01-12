@@ -306,14 +306,50 @@ export default function MatchesPage() {
       ) : filteredMatches.length === 0 ? (
         <p className="text-gray-500">No hay partidos para mostrar.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filteredMatches.map((m) => (
-            <div onClick={() => setOpenResultMatch(m)} className="cursor-pointer" key={m.id}>
-              <MatchCard
-                match={m}
-                playersMap={{}}
-                showActions={true}
-              />
+            <div key={m.id} className="space-y-2">
+              {/* Card clickeable para abrir modal */}
+              <div
+                onClick={() => setOpenResultMatch(m)}
+                className="cursor-pointer"
+              >
+                <MatchCard match={m} playersMap={{}} showActions={false} />
+              </div>
+
+              {/* Acciones */}
+              {(isAdmin || isManager) && (
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <Link
+                    href={`/matches/edit/${m.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition"
+                  >
+                    Editar partido
+                  </Link>
+
+                  <Link
+                    href={`/matches/score/${m.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
+                  >
+                    {isPlayed(m) ? "Editar resultado" : "Cargar resultado"}
+                  </Link>
+
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteMatch(m.id);
+                      }}
+                      className="bg-red-100 text-red-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-red-200 transition"
+                    >
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

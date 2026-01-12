@@ -83,14 +83,61 @@ select {
   main h5,
   main h6,
   main p,
-  main span,
-  main div,
   main li,
   main td,
   main th {
     color: #111827 !important; /* gray-900 */
     -webkit-text-fill-color: #111827 !important;
     opacity: 1 !important;
+  }
+
+  /* Respetar utilidades Tailwind en iOS (botones/links) */
+  .text-white,
+  .text-white * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  .text-green-600,
+  .text-green-600 * {
+    color: #16a34a !important;
+    -webkit-text-fill-color: #16a34a !important;
+  }
+
+  .text-green-700,
+  .text-green-700 * {
+    color: #15803d !important;
+    -webkit-text-fill-color: #15803d !important;
+  }
+
+  .text-blue-600,
+  .text-blue-600 * {
+    color: #2563eb !important;
+    -webkit-text-fill-color: #2563eb !important;
+  }
+
+  .text-blue-700,
+  .text-blue-700 * {
+    color: #1d4ed8 !important;
+    -webkit-text-fill-color: #1d4ed8 !important;
+  }
+
+  .text-indigo-600,
+  .text-indigo-600 * {
+    color: #4f46e5 !important;
+    -webkit-text-fill-color: #4f46e5 !important;
+  }
+
+  .text-indigo-700,
+  .text-indigo-700 * {
+    color: #4338ca !important;
+    -webkit-text-fill-color: #4338ca !important;
+  }
+
+  .text-red-700,
+  .text-red-700 * {
+    color: #b91c1c !important;
+    -webkit-text-fill-color: #b91c1c !important;
   }
 
   /* Formularios */

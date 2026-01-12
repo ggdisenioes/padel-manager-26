@@ -1,10 +1,12 @@
 // ./app/page.tsx
+// ./app/page.tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "./lib/supabase";
 import Link from "next/link";
-import { useRole } from "./hooks/useRole";
+import { supabase } from "@/lib/supabase";
+import { useRole } from "@/hooks/useRole";
+import  MatchCard  from "@/components/matches/MatchCard";
 
 type PlayerMap = {
   [key: number]: string;
@@ -66,6 +68,16 @@ type FinishedMatch = {
   player_1_b: number | null;
   player_2_b: number | null;
   created_at: string;
+};
+
+type RankingMatchRow = {
+  winner: "A" | "B" | string | null;
+  player_1_a: number | null;
+  player_2_a: number | null;
+  player_1_b: number | null;
+  player_2_b: number | null;
+  score: string | null;
+  tournament_id: number | null;
 };
 
 
@@ -191,7 +203,7 @@ export default function DashboardPage() {
         .eq("is_approved", true);
 
       const pMap: PlayerMap = {};
-      (players || []).forEach((p) => {
+      (players || []).forEach((p: { id: number; name: string }) => {
         pMap[p.id] = p.name;
       });
       setPlayerMap(pMap);
@@ -204,7 +216,7 @@ export default function DashboardPage() {
         .select("id, name");
 
       const tMap: TournamentMap = {};
-      (tournaments || []).forEach((t) => {
+      (tournaments || []).forEach((t: { id: number; name: string }) => {
         tMap[t.id] = t.name;
       });
       setTournamentMap(tMap);
@@ -253,7 +265,7 @@ export default function DashboardPage() {
 
       const rankingMap: Record<number, RankingItem> = {};
 
-      (filteredRankingMatches).forEach((m) => {
+      (filteredRankingMatches).forEach((m: RankingMatchRow) => {
         const teamA = [m.player_1_a, m.player_2_a].filter(Boolean) as number[];
         const teamB = [m.player_1_b, m.player_2_b].filter(Boolean) as number[];
 
@@ -358,7 +370,7 @@ export default function DashboardPage() {
           schema: "public",
           table: "action_logs",
         },
-        (payload) => {
+        (payload: { new: AuditLog }) => {
           const newLog = payload.new as AuditLog;
 
           setRecentLogs((prev) => {
@@ -631,74 +643,35 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div className="space-y-6">
-            {upcomingMatches.map((m) => (
-              <div
-                key={m.id}
-                className="bg-white rounded-2xl border border-gray-200 shadow-sm px-6 py-5"
-              >
-                {/* Tournament */}
-                <div className="mb-4">
-                  <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                    {getTournamentName(m.tournament_id)}
-                  </span>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {upcomingMatches.map((m: UpcomingMatch) => {
+              const teamA = {
+                p1: m.player_1_a ? playerMap[m.player_1_a] ?? "Por definir" : "Por definir",
+                p2: m.player_2_a ? playerMap[m.player_2_a] ?? "Por definir" : "Por definir",
+                score: null,
+                winner: m.winner === "A",
+              };
 
-                {/* Players */}
-                <div className="grid grid-cols-3 items-center text-center gap-4">
-                  <div>
-                    <p className="text-lg font-bold text-gray-900">
-                      {getPlayerName(m.player_1_a)}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {getPlayerName(m.player_2_a)}
-                    </p>
-                  </div>
+              const teamB = {
+                p1: m.player_1_b ? playerMap[m.player_1_b] ?? "Por definir" : "Por definir",
+                p2: m.player_2_b ? playerMap[m.player_2_b] ?? "Por definir" : "Por definir",
+                score: null,
+                winner: m.winner === "B",
+              };
 
-                  <div className="flex justify-center">
-                    <span className="flex items-center justify-center h-12 w-12 rounded-full bg-green-100 text-green-700 font-bold">
-                      VS
-                    </span>
-                  </div>
-
-                  <div>
-                    <p className="text-lg font-bold text-gray-900">
-                      {getPlayerName(m.player_1_b)}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {getPlayerName(m.player_2_b)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="my-4 h-px bg-gray-200" />
-
-                {/* Meta */}
-                <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    📅 {m.start_time
-                      ? new Date(m.start_time).toLocaleDateString("es-ES", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "Sin fecha"}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    ⏰ {m.start_time
-                      ? new Date(m.start_time).toLocaleTimeString("es-ES", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "--:--"}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    📍 {m.court ?? "Sin pista"}
-                  </div>
-                </div>
-              </div>
-            ))}
+              return (
+                <MatchCard
+                  key={m.id}
+                  status="programado"
+                  teamA={teamA}
+                  teamB={teamB}
+                  tournament={getTournamentName(m.tournament_id)}
+                  date={m.start_time ?? undefined}
+                  court={m.court ?? undefined}
+                  showActions={false as boolean}
+                />
+              );
+            })}
           </div>
         </section>
 
@@ -708,7 +681,7 @@ export default function DashboardPage() {
           <div className="xl:col-span-2">
             <h2 className="text-lg font-bold mb-4">Resultados Recientes</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recentResults.map((m) => (
+              {recentResults.map((m: FinishedMatch) => (
                 <div key={m.id} className="bg-white rounded-xl border p-4 shadow-sm">
                   <p className="font-semibold text-sm">
                     {getPlayerName(m.player_1_a)} / {getPlayerName(m.player_2_a)}
@@ -757,7 +730,7 @@ export default function DashboardPage() {
                 <div className="w-10 text-center">GC</div>
                 <div className="w-12 text-center">Pts</div>
               </div>
-              {topRanking.map((r, idx) => {
+              {topRanking.map((r: RankingItem, idx: number) => {
                 const medal =
                   idx === 0 ? "🥇" :
                   idx === 1 ? "🥈" :

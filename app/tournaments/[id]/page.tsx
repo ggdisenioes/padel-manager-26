@@ -1,13 +1,11 @@
-// ./app/tournaments/[id]/page.tsx
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
-import Card from "../../components/Card";
 import Badge from "../../components/Badge";
 import toast from "react-hot-toast";
+import MatchCard from "../../components/matches/MatchCard";
 
 type Tournament = {
   id: number;
@@ -112,25 +110,12 @@ export default function TournamentDetail() {
     load();
   }, [id, idNum, router]);
 
-  // Helpers
-  const getPlayerName = (id: number | null) =>
-    id && playersMap[id] ? playersMap[id] : id ? `ID ${id}` : "-";
 
   const formatDate = (iso: string | null) => {
     if (!iso) return "-";
     return new Date(iso).toLocaleDateString("es-ES");
   };
 
-  const formatDateTime = (iso: string | null) => {
-    if (!iso) return "Sin fecha";
-    return new Date(iso).toLocaleString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   // Agrupar partidos por ronda
   const matchesByRound = useMemo(() => {
@@ -215,74 +200,14 @@ export default function TournamentDetail() {
                 </h2>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {matchesByRound[roundName].map((m) => {
-                    const played =
-                      m.winner && m.winner !== "pending" && m.score;
-
-                    const score = m.score || "-";
-                    const statusColor =
-                      !played || m.winner === "pending"
-                        ? "bg-blue-100 text-blue-700"
-                        : "bg-green-100 text-green-700";
-                    const statusText =
-                      !played || m.winner === "pending"
-                        ? "Pendiente"
-                        : "Finalizado";
-
-                    const pareja1 = `${getPlayerName(m.player_1_a)} / ${getPlayerName(
-                      m.player_2_a
-                    )}`;
-                    const pareja2 = `${getPlayerName(m.player_1_b)} / ${getPlayerName(
-                      m.player_2_b
-                    )}`;
-
-                    return (
-                      <Card
-                        key={m.id}
-                        className="w-full bg-white/95 border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition"
-                      >
-                        <div className="p-4 space-y-3">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                            <div>
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">
-                                Partido #{m.id}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {formatDateTime(m.start_time)} ·{" "}
-                                {m.place
-                                  ? `${m.place}${
-                                      m.court ? ` - Pista ${m.court}` : ""
-                                    }`
-                                  : m.court
-                                  ? `Pista ${m.court}`
-                                  : "Lugar no especificado"}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-3 md:flex-col md:items-end">
-                              <span
-                                className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold ${statusColor}`}
-                              >
-                                {statusText}
-                              </span>
-                              <span className="text-xl font-extrabold text-gray-900">
-                                {score}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1 text-sm">
-                            <p className="font-semibold text-gray-900">
-                              {pareja1}
-                            </p>
-                            <p className="font-semibold text-gray-900">
-                              {pareja2}
-                            </p>
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
+                  {matchesByRound[roundName].map((m) => (
+                    <MatchCard
+                      key={m.id}
+                      match={m}
+                      playersMap={playersMap}
+                      showActions={true}
+                    />
+                  ))}
                 </div>
               </div>
             ))

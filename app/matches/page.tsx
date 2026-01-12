@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import toast from "react-hot-toast";
 
 // ✅ Import correcto (Supabase está en /lib/supabase.ts en la raíz)
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
+import  MatchCard  from "../components/matches/MatchCard";
 
 type PlayerRef = {
   id: number;
@@ -36,7 +38,7 @@ type Tournament = {
 type View = "pending" | "finished" | "all";
 
 export default function MatchesPage() {
-  const { isAdmin, isManager, role, loading: roleLoading } = useRole();
+  const { isAdmin, isManager, loading: roleLoading } = useRole();
   const searchParams = useSearchParams();
 
   const [matches, setMatches] = useState<Match[]>([]);
@@ -45,7 +47,10 @@ export default function MatchesPage() {
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [filterTournament, setFilterTournament] = useState<string>("all");
+  const [filterRound, setFilterRound] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+
+  const [openResultMatch, setOpenResultMatch] = useState<Match | null>(null);
 
   // Si entran con /matches?status=pending, forzamos la vista pendientes
   useEffect(() => {
@@ -114,6 +119,12 @@ export default function MatchesPage() {
 
   const isPlayed = (m: Match) => !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
 
+  const formatScoreForDisplay = (raw: string | null) => {
+    if (!raw) return "";
+    // Accept formats like "6-4 4-6" or "6 4" and normalize spacing
+    return raw.replace(/\s+/g, " ").trim();
+  };
+
   // 1️⃣ AGREGAR FUNCIÓN handleDeleteMatch
   const handleDeleteMatch = async (matchId: number) => {
     const confirmed = window.confirm(
@@ -152,15 +163,27 @@ export default function MatchesPage() {
       }
     }
 
-    if (filterCategory !== "all") {
+    if (filterRound !== "all") {
       result = result.filter(
-        (m) =>
-          m.round_name?.toLowerCase() === filterCategory.toLowerCase()
+        (m) => m.round_name?.toLowerCase() === filterRound.toLowerCase()
+      );
+    }
+
+    if (filterCategory !== "all") {
+      const tournamentIds = tournaments
+        .filter(
+          (t) =>
+            t.category?.toLowerCase() === filterCategory.toLowerCase()
+        )
+        .map((t) => t.id);
+
+      result = result.filter(
+        (m) => m.tournament_id && tournamentIds.includes(m.tournament_id)
       );
     }
 
     return result;
-  }, [matches, view, filterTournament, filterCategory]);
+  }, [matches, view, filterTournament, filterRound, filterCategory, tournaments]);
 
   if (roleLoading) {
     return (
@@ -245,8 +268,8 @@ export default function MatchesPage() {
               Ronda / Fase
             </label>
             <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
+              value={filterRound}
+              onChange={(e) => setFilterRound(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="all">Todas</option>
@@ -264,12 +287,16 @@ export default function MatchesPage() {
               Categoría
             </label>
             <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="all">Todas</option>
-              <option value="mixto">Mixto</option>
-              <option value="masculino">Masculino</option>
-              <option value="femenino">Femenino</option>
+              <option value="grupos">Grupos</option>
+              <option value="cuartos">Cuartos</option>
+              <option value="semifinal">Semifinal</option>
+              <option value="final">Final</option>
+              <option value="amistoso">Amistoso</option>
             </select>
           </div>
         </div>
@@ -282,77 +309,105 @@ export default function MatchesPage() {
       ) : (
         <div className="space-y-3">
           {filteredMatches.map((m) => (
-            <div
-              key={m.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">
-                  {m.round_name || "Partido"}
-                </span>
-
-                {m.score && (
-                  <span className="text-sm font-bold text-green-600">{m.score}</span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between text-center">
-                <div className="flex-1">
-                  <p className="font-semibold text-lg">{m.player_1_a?.name || "-"}</p>
-                  <p className="text-sm text-gray-500">{m.player_2_a?.name || "-"}</p>
-                </div>
-
-                <div className="mx-6">
-                  <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-100 text-green-600 font-bold">
-                    VS
-                  </span>
-                </div>
-
-                <div className="flex-1">
-                  <p className="font-semibold text-lg">{m.player_1_b?.name || "-"}</p>
-                  <p className="text-sm text-gray-500">{m.player_2_b?.name || "-"}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-6 text-sm text-gray-500">
-                {m.start_time && (
-                  <>
-                    <span>📅 {new Date(m.start_time).toLocaleDateString("es-ES")}</span>
-                    <span>⏰ {new Date(m.start_time).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2 justify-end">
-                {(isAdmin || isManager) && (
-                  <Link
-                    href={`/matches/edit/${m.id}`}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition"
-                  >
-                    Editar partido
-                  </Link>
-                )}
-
-                {(isAdmin || (isManager && !isPlayed(m))) && (
-                  <Link
-                    href={`/matches/score/${m.id}`}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
-                  >
-                    {isPlayed(m) ? "Editar resultado" : "Cargar resultado"}
-                  </Link>
-                )}
-
-                {isAdmin && (
-                  <button
-                    onClick={() => handleDeleteMatch(m.id)}
-                    className="bg-red-100 text-red-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-red-200 transition"
-                  >
-                    Eliminar
-                  </button>
-                )}
-              </div>
+            <div onClick={() => setOpenResultMatch(m)} className="cursor-pointer" key={m.id}>
+              <MatchCard
+                match={m}
+                playersMap={{}}
+                showActions={true}
+              />
             </div>
           ))}
+        </div>
+      )}
+
+      {openResultMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
+            <button
+              onClick={() => setOpenResultMatch(null)}
+              className="absolute top-3 right-3 text-white/60 hover:text-white"
+            >
+              ✕
+            </button>
+
+            {/* LOGO */}
+            <div className="flex flex-col items-center gap-1">
+              <Image
+                src="/logo.svg"
+                alt="Twinco Padel Manager"
+                width={160}
+                height={40}
+                priority
+                className="h-8 w-auto object-contain"
+              />
+              <span className="text-xs tracking-widest text-green-400">
+                PADEL MANAGER
+              </span>
+            </div>
+
+            {/* RESULT */}
+            <div className="text-center space-y-2 mt-4">
+              {isPlayed(openResultMatch) ? (
+                <>
+                  {/* WINNERS */}
+                  <p className="text-lg font-semibold">
+                    {openResultMatch.winner === "A"
+                      ? `${openResultMatch.player_1_a?.name}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`
+                      : `${openResultMatch.player_1_b?.name}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`}
+                  </p>
+
+                  {/* SCORE */}
+                  <p className="text-5xl font-extrabold my-2">
+                    {formatScoreForDisplay(openResultMatch.score)}
+                  </p>
+
+                  {/* LOSERS */}
+                  <p className="text-sm text-white/70">
+                    {openResultMatch.winner === "A"
+                      ? `${openResultMatch.player_1_b?.name}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`
+                      : `${openResultMatch.player_1_a?.name}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-white/60">
+                  Resultado todavía no cargado
+                </p>
+              )}
+            </div>
+
+            {/* SHARE */}
+            <button
+              disabled={!isPlayed(openResultMatch)}
+              onClick={async () => {
+                if (!isPlayed(openResultMatch)) return;
+
+                const teamA = `${openResultMatch.player_1_a?.name || ""}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`.trim();
+                const teamB = `${openResultMatch.player_1_b?.name || ""}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`.trim();
+                const score = formatScoreForDisplay(openResultMatch.score);
+
+                const text = `TWINCO PADEL MANAGER\n\n${teamA}\n${score}\n${teamB}`;
+
+                try {
+                  if (navigator.share) {
+                    await navigator.share({ text });
+                    return;
+                  }
+                  await navigator.clipboard.writeText(text);
+                  toast.success("Resultado copiado");
+                } catch (err: any) {
+                  if (err?.name === "AbortError") return;
+                  toast.error("No se pudo compartir");
+                }
+              }}
+              className={`w-full mt-4 py-2 rounded-xl font-semibold transition ${
+                isPlayed(openResultMatch)
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-white/10 text-white/40 cursor-not-allowed"
+              }`}
+            >
+              Compartir resultado
+            </button>
+          </div>
         </div>
       )}
     </main>

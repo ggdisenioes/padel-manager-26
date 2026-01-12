@@ -12,6 +12,10 @@ type RankedPlayer = {
   name: string;
   avatar_url: string | null;
   wins: number;
+  losses: number;
+  played: number;
+  games_for: number;
+  games_against: number;
   points: number;
 };
 
@@ -49,7 +53,7 @@ export default function RankingPage() {
 
     let matchQuery = supabase
       .from("matches")
-      .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, tournament_id");
+      .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, tournament_id, score");
 
     if (selectedTournament !== "all") {
       matchQuery = matchQuery.eq("tournament_id", selectedTournament);
@@ -67,7 +71,7 @@ export default function RankingPage() {
     // Contar partidos jugados, victorias y derrotas por jugador
     const statsMap: Record<
       number,
-      { wins: number; losses: number; played: number }
+      { wins: number; losses: number; played: number; games_for: number; games_against: number }
     > = {};
 
     (matches || []).forEach((match: any) => {
@@ -77,11 +81,33 @@ export default function RankingPage() {
       const teamA = [match.player_1_a, match.player_2_a];
       const teamB = [match.player_1_b, match.player_2_b];
 
+      const sets = match.score?.split(" ") || [];
+      let gamesA = 0;
+      let gamesB = 0;
+
+      sets.forEach((set: string) => {
+        const [a, b] = set.split("-").map(Number);
+        if (!isNaN(a) && !isNaN(b)) {
+          gamesA += a;
+          gamesB += b;
+        }
+      });
+
       [...teamA, ...teamB].forEach((id: number) => {
         if (!statsMap[id]) {
-          statsMap[id] = { wins: 0, losses: 0, played: 0 };
+          statsMap[id] = { wins: 0, losses: 0, played: 0, games_for: 0, games_against: 0 };
         }
         statsMap[id].played += 1;
+      });
+
+      teamA.forEach((id: number) => {
+        statsMap[id].games_for += gamesA;
+        statsMap[id].games_against += gamesB;
+      });
+
+      teamB.forEach((id: number) => {
+        statsMap[id].games_for += gamesB;
+        statsMap[id].games_against += gamesA;
       });
 
       if (match.winner === "A") {
@@ -104,7 +130,7 @@ export default function RankingPage() {
     });
 
     const ranking: RankedPlayer[] = (playerData || []).map((p: any) => {
-      const stats = statsMap[p.id] || { wins: 0, losses: 0, played: 0 };
+      const stats = statsMap[p.id] || { wins: 0, losses: 0, played: 0, games_for: 0, games_against: 0 };
       const points = stats.wins * 3 + stats.losses * 1;
 
       return {
@@ -112,14 +138,22 @@ export default function RankingPage() {
         name: p.name,
         avatar_url: p.avatar_url,
         wins: stats.wins,
+        losses: stats.losses,
+        played: stats.played,
+        games_for: stats.games_for,
+        games_against: stats.games_against,
         points,
       };
     });
 
-    // Ordenar por puntos desc, luego victorias, luego nombre
+    // Ordenar por puntos desc, luego victorias, luego diferencia de games, luego games_for, luego nombre
     ranking.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       if (b.wins !== a.wins) return b.wins - a.wins;
+      const diffA = a.games_for - a.games_against;
+      const diffB = b.games_for - b.games_against;
+      if (diffB !== diffA) return diffB - diffA;
+      if (b.games_for !== a.games_for) return b.games_for - a.games_for;
       return a.name.localeCompare(b.name);
     });
 
@@ -146,7 +180,7 @@ export default function RankingPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadRanking, selectedTournament]);
+  }, [loadRanking]);
 
   const podium = players.slice(0, 3);
   const rest = players.slice(3);
@@ -269,7 +303,16 @@ export default function RankingPage() {
                           Jugador
                         </th>
                         <th className="py-2 pr-2 text-center font-semibold">
-                          Victorias
+                          PJ
+                        </th>
+                        <th className="py-2 pr-2 text-center font-semibold">
+                          PG
+                        </th>
+                        <th className="py-2 pr-2 text-center font-semibold">
+                          PP
+                        </th>
+                        <th className="py-2 pr-2 text-center font-semibold">
+                          +/-
                         </th>
                         <th className="py-2 text-center font-semibold">
                           Puntos
@@ -311,7 +354,16 @@ export default function RankingPage() {
                             </div>
                           </td>
                           <td className="py-2 pr-2 text-center text-gray-700 dark:text-gray-200">
+                            {player.played}
+                          </td>
+                          <td className="py-2 pr-2 text-center text-gray-700 dark:text-gray-200">
                             {player.wins}
+                          </td>
+                          <td className="py-2 pr-2 text-center text-gray-700 dark:text-gray-200">
+                            {player.losses}
+                          </td>
+                          <td className="py-2 pr-2 text-center text-gray-700 dark:text-gray-200">
+                            {player.games_for - player.games_against}
                           </td>
                           <td className="py-2 text-center font-bold text-gray-900 dark:text-white">
                             {player.points}

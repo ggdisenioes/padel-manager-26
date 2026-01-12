@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import Badge from "../../components/Badge";
 import toast from "react-hot-toast";
-import MatchCard from "../../components/matches/MatchCard";
+import MatchCard, { type Match } from "../../components/matches/MatchCard";
 
 type Tournament = {
   id: number;
@@ -13,20 +13,6 @@ type Tournament = {
   category: string | null;
   start_date: string | null;
   end_date: string | null;
-};
-
-type Match = {
-  id: number;
-  start_time: string | null;
-  round_name: string | null;
-  place: string | null;
-  court: string | null;
-  score: string | null;
-  winner: string | null;
-  player_1_a: number | null;
-  player_2_a: number | null;
-  player_1_b: number | null;
-  player_2_b: number | null;
 };
 
 type PlayerMap = {
@@ -80,7 +66,8 @@ export default function TournamentDetail() {
           "id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b"
         )
         .eq("tournament_id", idNum)
-        .order("start_time", { ascending: true });
+        .order("start_time", { ascending: true })
+        .returns<Match[]>();
 
       if (mError) {
         console.error("Error cargando partidos:", mError);

@@ -2,11 +2,14 @@
 // ./app/page.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import html2canvas from "html2canvas";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRole } from "@/hooks/useRole";
-import  MatchCard  from "@/components/matches/MatchCard";
+import MatchCard from "@/components/matches/MatchCard";
+import toast from "react-hot-toast";
+import MatchShareCard from "./components/matches/MatchShareCard";
 
 type PlayerMap = {
   [key: number]: string;
@@ -62,7 +65,10 @@ type RankingItem = {
 
 type FinishedMatch = {
   id: number;
+  tournament_id: number | null;
+  start_time: string | null;
   score: string | null;
+  winner: string | null;
   player_1_a: number | null;
   player_2_a: number | null;
   player_1_b: number | null;
@@ -97,6 +103,9 @@ export default function DashboardPage() {
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
   const [recentResults, setRecentResults] = useState<FinishedMatch[]>([]);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+  const [openResultMatch, setOpenResultMatch] = useState<FinishedMatch | null>(null);
+  const shareCardRef = useRef<HTMLDivElement | null>(null);
 
 
   // Función para calcular alertas inteligentes (estable para hooks/realtime)
@@ -236,7 +245,7 @@ export default function DashboardPage() {
       // 4.5) Resultados recientes
       const { data: finishedMatches } = await supabase
         .from("matches")
-        .select("id, score, player_1_a, player_2_a, player_1_b, player_2_b, created_at")
+        .select("id, tournament_id, start_time, round_name, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, created_at")
         .neq("winner", "pending")
         .order("created_at", { ascending: false })
         .limit(5);
@@ -438,19 +447,53 @@ export default function DashboardPage() {
   const getPlayerName = (id: number | null) =>
     id && playerMap[id] ? playerMap[id] : id ? `ID ${id}` : "-";
 
-  const getTournamentName = (id: number | null) =>
-    id && tournamentMap[id] ? tournamentMap[id] : id ? `Torneo #${id}` : "Sin torneo";
+  const isPlayed = (m: FinishedMatch) =>
+    !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
 
-  const formatDateTime = (iso: string | null) => {
-    if (!iso) return "Sin fecha";
-    return new Date(iso).toLocaleString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const formatScoreForDisplay = (raw: string | null) => {
+    if (!raw) return "";
+    return raw.replace(/\s+/g, " ").trim();
   };
+
+  const buildTeamNameFromIds = (p1: number | null, p2: number | null) => {
+    const a = getPlayerName(p1);
+    const b = getPlayerName(p2);
+    const joined = [a, b].filter((x) => x && x !== "-").join(" / ");
+    return joined || "Por definir";
+  };
+
+  const getWinnerLoserTeams = (m: FinishedMatch) => {
+    const teamA = buildTeamNameFromIds(m.player_1_a, m.player_2_a);
+    const teamB = buildTeamNameFromIds(m.player_1_b, m.player_2_b);
+    const score = formatScoreForDisplay(m.score);
+
+    if (m.winner === "A") return { winnerTeam: teamA, loserTeam: teamB, score };
+    if (m.winner === "B") return { winnerTeam: teamB, loserTeam: teamA, score };
+    return { winnerTeam: teamA, loserTeam: teamB, score };
+  };
+
+  // Helper: Genera PNG desde el shareCardRef usando html2canvas (devuelve Blob + URL)
+  const generatePngFromShareRef = async () => {
+    if (!shareCardRef.current) return null;
+
+    const canvas = await html2canvas(shareCardRef.current, {
+      // Use backgroundColor (supported by html2canvas) and cast options to any to satisfy typings
+      backgroundColor: "#020617",
+      scale: 2,
+      useCORS: true,
+      foreignObjectRendering: true,
+    } as any);
+
+    const blob: Blob | null = await new Promise((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/png");
+    });
+
+    if (!blob) return null;
+
+    const url = URL.createObjectURL(blob);
+    return { blob, url };
+  };
+
 
   if (isUser) {
     // Usuario cliente: solo vista informativa
@@ -645,31 +688,21 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {upcomingMatches.map((m: UpcomingMatch) => {
-              const teamA = {
-                p1: m.player_1_a ? playerMap[m.player_1_a] ?? "Por definir" : "Por definir",
-                p2: m.player_2_a ? playerMap[m.player_2_a] ?? "Por definir" : "Por definir",
-                score: null,
-                winner: m.winner === "A",
+              const matchWithName: any = {
+                ...m,
+                tournament_name: m.tournament_id ? tournamentMap[m.tournament_id] : undefined,
               };
-
-              const teamB = {
-                p1: m.player_1_b ? playerMap[m.player_1_b] ?? "Por definir" : "Por definir",
-                p2: m.player_2_b ? playerMap[m.player_2_b] ?? "Por definir" : "Por definir",
-                score: null,
-                winner: m.winner === "B",
-              };
-
+              const clickable = !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
               return (
-                <MatchCard
+                <div
                   key={m.id}
-                  status="programado"
-                  teamA={teamA}
-                  teamB={teamB}
-                  tournament={getTournamentName(m.tournament_id)}
-                  date={m.start_time ?? undefined}
-                  court={m.court ?? undefined}
-                  showActions={false as boolean}
-                />
+                  className={clickable ? "cursor-pointer" : ""}
+                  onClick={() => {
+                    if (clickable) setOpenResultMatch(matchWithName as any);
+                  }}
+                >
+                  <MatchCard match={matchWithName} playersMap={playerMap} showActions={false} />
+                </div>
               );
             })}
           </div>
@@ -681,17 +714,21 @@ export default function DashboardPage() {
           <div className="xl:col-span-2">
             <h2 className="text-lg font-bold mb-4">Resultados Recientes</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recentResults.map((m: FinishedMatch) => (
-                <div key={m.id} className="bg-white rounded-xl border p-4 shadow-sm">
-                  <p className="font-semibold text-sm">
-                    {getPlayerName(m.player_1_a)} / {getPlayerName(m.player_2_a)}
-                  </p>
-                  <p className="text-xs text-gray-500 mb-2">
-                    vs {getPlayerName(m.player_1_b)} / {getPlayerName(m.player_2_b)}
-                  </p>
-                  <p className="text-green-600 font-bold">{m.score}</p>
-                </div>
-              ))}
+              {recentResults.map((m: FinishedMatch) => {
+                const matchWithName: any = {
+                  ...m,
+                  tournament_name: m.tournament_id ? tournamentMap[m.tournament_id] : undefined,
+                };
+                return (
+                  <div
+                    key={m.id}
+                    className="cursor-pointer"
+                    onClick={() => setOpenResultMatch(matchWithName)}
+                  >
+                    <MatchCard match={matchWithName} playersMap={playerMap} showActions={false} />
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -805,6 +842,157 @@ export default function DashboardPage() {
           </section>
         )}
       </div>
+      {/* Render oculto para generar imagen (Instagram 1:1) */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: -10000,
+          pointerEvents: "none",
+          zIndex: -1,
+        }}
+      >
+        {openResultMatch && isPlayed(openResultMatch) && (
+          <div ref={shareCardRef}>
+            {(() => {
+              const t = getWinnerLoserTeams(openResultMatch);
+              return <MatchShareCard winnerTeam={t.winnerTeam} loserTeam={t.loserTeam} score={t.score} />;
+            })()}
+          </div>
+        )}
+      </div>
+
+      {openResultMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
+            <button
+              onClick={() => setOpenResultMatch(null)}
+              className="absolute top-3 right-3 text-white/60 hover:text-white"
+            >
+              ✕
+            </button>
+
+            <div className="flex flex-col items-center gap-1">
+              <img src="/logo.svg" alt="Twinco Padel Manager" className="h-8 w-auto object-contain" />
+              <span className="text-xs tracking-widest text-green-400">PADEL MANAGER</span>
+            </div>
+
+            <div className="text-center space-y-2 mt-4">
+              {isPlayed(openResultMatch) ? (
+                <>
+                  <p className="text-lg font-semibold">
+                    {openResultMatch.winner === "A"
+                      ? buildTeamNameFromIds(openResultMatch.player_1_a, openResultMatch.player_2_a)
+                      : buildTeamNameFromIds(openResultMatch.player_1_b, openResultMatch.player_2_b)}
+                  </p>
+
+                  <p className="text-5xl font-extrabold my-2">
+                    {formatScoreForDisplay(openResultMatch.score)}
+                  </p>
+
+                  <p className="text-sm text-white/70">
+                    {openResultMatch.winner === "A"
+                      ? buildTeamNameFromIds(openResultMatch.player_1_b, openResultMatch.player_2_b)
+                      : buildTeamNameFromIds(openResultMatch.player_1_a, openResultMatch.player_2_a)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-white/60">Resultado todavía no cargado</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <button
+                disabled={!isPlayed(openResultMatch)}
+                onClick={async () => {
+                  if (!isPlayed(openResultMatch)) return;
+                  try {
+                    const result = await generatePngFromShareRef();
+                    if (!result) {
+                      toast.error("No se pudo generar la imagen");
+                      return;
+                    }
+
+                    const { blob, url } = result;
+                    const file = new File([blob], "resultado-twinco.png", { type: "image/png" });
+
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({
+                          files: [file],
+                          title: "Resultado del partido",
+                          text: "Resultado Twinco Padel Manager",
+                        });
+                        toast.success("¡Imagen compartida!");
+                        URL.revokeObjectURL(url);
+                        return;
+                      } catch (err: any) {
+                        if (err?.name === "AbortError" || err?.message === "Share canceled") {
+                          URL.revokeObjectURL(url);
+                          return;
+                        }
+                        // if share fails, fall back to download below
+                      }
+                    }
+
+                    // Fallback: descargar
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "resultado-twinco.png";
+                    a.click();
+                    toast.success("Imagen descargada");
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("No se pudo generar la imagen");
+                  }
+                }}
+                className={`w-full mt-2 py-2 rounded-xl font-semibold transition ${
+                  isPlayed(openResultMatch)
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-white/10 text-white/40 cursor-not-allowed"
+                }`}
+              >
+                Compartir imagen
+              </button>
+
+              <button
+                disabled={!isPlayed(openResultMatch)}
+                onClick={async () => {
+                  if (!isPlayed(openResultMatch)) return;
+                  try {
+                    const result = await generatePngFromShareRef();
+                    if (!result) {
+                      toast.error("No se pudo generar la imagen");
+                      return;
+                    }
+
+                    const { url } = result;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "resultado-twinco.png";
+                    a.click();
+                    toast.success("Imagen descargada");
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("No se pudo generar la imagen");
+                  }
+                }}
+                className={`w-full py-2 rounded-xl font-semibold transition ${
+                  isPlayed(openResultMatch)
+                    ? "bg-white/10 hover:bg-white/20 text-white"
+                    : "bg-white/5 text-white/30 cursor-not-allowed"
+                }`}
+              >
+                Descargar imagen
+              </button>
+
+              <p className="text-center text-xs text-white/60">Ideal para WhatsApp e Instagram.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

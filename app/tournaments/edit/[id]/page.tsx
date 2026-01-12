@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import Card from "../../../components/Card";
 import Link from "next/link";
 import { useRole } from "../../../hooks/useRole";
+import MatchCard from "../../../components/matches/MatchCard";
+import toast from "react-hot-toast";
+import MatchShareCard from "../../../components/matches/MatchShareCard";
 
 export default function EditTournament() {
   const router = useRouter();
@@ -24,17 +27,9 @@ export default function EditTournament() {
 
   const { isAdmin, isManager } = useRole();
   const [matches, setMatches] = useState<any[]>([]);
-
-  const playerLabel = (p: any) => {
-    if (!p || !p.name) return "Jugador no disponible";
-    return p.name;
-  };
-
-  const teamA = (m: any) =>
-    `${playerLabel(m.p1a)}${m.p2a ? ` / ${playerLabel(m.p2a)}` : ""}`;
-
-  const teamB = (m: any) =>
-    `${playerLabel(m.p1b)}${m.p2b ? ` / ${playerLabel(m.p2b)}` : ""}`;
+  const [playersMap, setPlayersMap] = useState<Record<number, string>>({});
+  const [openResultMatch, setOpenResultMatch] = useState<any | null>(null);
+  const shareCardRef = useRef<HTMLDivElement | null>(null);
 
   // Cargar datos del torneo y partidos
   useEffect(() => {
@@ -92,7 +87,27 @@ export default function EditTournament() {
           console.error("Error cargando partidos del torneo:", matchesError);
           setMatches([]);
         } else {
-          setMatches(matchesData ?? []);
+          const normalized = (matchesData ?? []).map((m: any) => ({
+            ...m,
+            // Pasamos a MatchCard valores que pueden ser number o {id,name}. Preferimos el objeto si está.
+            player_1_a: m.p1a ?? m.player_1_a,
+            player_2_a: m.p2a ?? m.player_2_a,
+            player_1_b: m.p1b ?? m.player_1_b,
+            player_2_b: m.p2b ?? m.player_2_b,
+          }));
+
+          setMatches(normalized);
+
+          const map: Record<number, string> = {};
+          normalized.forEach((mm: any) => {
+            const vals = [mm.player_1_a, mm.player_2_a, mm.player_1_b, mm.player_2_b];
+            vals.forEach((v: any) => {
+              if (v && typeof v === "object" && typeof v.id === "number" && typeof v.name === "string") {
+                map[v.id] = v.name;
+              }
+            });
+          });
+          setPlayersMap(map);
         }
       } catch (err) {
         console.error("Excepción al cargar partidos:", err);
@@ -148,6 +163,31 @@ export default function EditTournament() {
     } else {
       setMatches((prev) => prev.filter((m) => m.id !== matchId));
     }
+  };
+
+  const isPlayed = (m: any) =>
+    !!m?.score && !!m?.winner && String(m.winner).toLowerCase() !== "pending";
+
+  const formatScoreForDisplay = (raw: string | null) => {
+    if (!raw) return "";
+    return raw.replace(/\s+/g, " ").trim();
+  };
+
+  const buildTeamName = (p1?: any, p2?: any) => {
+    const a = p1?.name ? p1.name : "";
+    const b = p2?.name ? p2.name : "";
+    const joined = [a, b].filter(Boolean).join(" / ");
+    return joined || "Por definir";
+  };
+
+  const getWinnerLoserTeams = (m: any) => {
+    const teamA = buildTeamName(m.player_1_a, m.player_2_a);
+    const teamB = buildTeamName(m.player_1_b, m.player_2_b);
+    const score = formatScoreForDisplay(m.score);
+
+    if (m.winner === "A") return { winnerTeam: teamA, loserTeam: teamB, score };
+    if (m.winner === "B") return { winnerTeam: teamB, loserTeam: teamA, score };
+    return { winnerTeam: teamA, loserTeam: teamB, score };
   };
 
   return (
@@ -256,7 +296,7 @@ export default function EditTournament() {
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 type="button"
-                onClick={() => router.push(`/matches/create?tournamentId=${idNumber}`)}
+                onClick={() => router.push(`/matches/create/manual?tournament=${idNumber}`)}
                 className="bg-green-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-green-700 transition"
               >
                 + Crear partido
@@ -264,7 +304,7 @@ export default function EditTournament() {
 
               <button
                 type="button"
-                onClick={() => router.push(`/tournaments/${idNumber}/generate-matches`)}
+                onClick={() => router.push(`/matches/create/random?tournament=${idNumber}`)}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
               >
                 Crear partidos aleatorios
@@ -277,31 +317,9 @@ export default function EditTournament() {
           ) : (
             <div className="space-y-4">
               {matches.map((m) => (
-                <div
-                  key={m.id}
-                  className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {m.round_name || "Partido"}
-                    </span>
-                    {m.score && (
-                      <span className="text-sm font-bold text-green-600">
-                        {m.score}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-center">
-                    <div className="flex-1">
-                      <p className="font-semibold">{teamA(m)}</p>
-                    </div>
-
-                    <span className="mx-4 font-bold text-gray-500">VS</span>
-
-                    <div className="flex-1">
-                      <p className="font-semibold">{teamB(m)}</p>
-                    </div>
+                <div key={m.id} className="space-y-3">
+                  <div onClick={() => setOpenResultMatch(m)} className="cursor-pointer">
+                    <MatchCard match={m} playersMap={playersMap} showActions={false} />
                   </div>
 
                   <div className="flex justify-end gap-2">
@@ -337,6 +355,171 @@ export default function EditTournament() {
             </div>
           )}
         </Card>
+      )}
+
+      {/* Render oculto para generar imagen (Instagram 1:1) */}
+      <div style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", opacity: 0 }}>
+        {openResultMatch && isPlayed(openResultMatch) && (
+          <div ref={shareCardRef}>
+            {(() => {
+              const t = getWinnerLoserTeams(openResultMatch);
+              return (
+                <MatchShareCard
+                  winnerTeam={t.winnerTeam}
+                  loserTeam={t.loserTeam}
+                  score={t.score}
+                />
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      {openResultMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
+            <button
+              onClick={() => setOpenResultMatch(null)}
+              className="absolute top-3 right-3 text-white/60 hover:text-white"
+            >
+              ✕
+            </button>
+
+            {/* LOGO */}
+            <div className="flex flex-col items-center gap-1">
+              <img
+                src="/logo.svg"
+                alt="Twinco Padel Manager"
+                className="h-8 w-auto object-contain"
+              />
+              <span className="text-xs tracking-widest text-green-400">
+                PADEL MANAGER
+              </span>
+            </div>
+
+            {/* RESULT */}
+            <div className="text-center space-y-2 mt-4">
+              {isPlayed(openResultMatch) ? (
+                <>
+                  <p className="text-lg font-semibold">
+                    {openResultMatch.winner === "A"
+                      ? buildTeamName(openResultMatch.player_1_a, openResultMatch.player_2_a)
+                      : buildTeamName(openResultMatch.player_1_b, openResultMatch.player_2_b)}
+                  </p>
+
+                  <p className="text-5xl font-extrabold my-2">
+                    {formatScoreForDisplay(openResultMatch.score)}
+                  </p>
+
+                  <p className="text-sm text-white/70">
+                    {openResultMatch.winner === "A"
+                      ? buildTeamName(openResultMatch.player_1_b, openResultMatch.player_2_b)
+                      : buildTeamName(openResultMatch.player_1_a, openResultMatch.player_2_a)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-white/60">Resultado todavía no cargado</p>
+              )}
+            </div>
+
+            {/* BOTONES PRO */}
+            <div className="space-y-2">
+              <button
+                disabled={!isPlayed(openResultMatch)}
+                onClick={async () => {
+                  if (!isPlayed(openResultMatch)) return;
+                  if (!shareCardRef.current) {
+                    toast.error("No se pudo generar la imagen");
+                    return;
+                  }
+
+                  try {
+                    const { toPng } = await import("html-to-image");
+                    const dataUrl = await toPng(shareCardRef.current, {
+                      cacheBust: true,
+                      pixelRatio: 2,
+                      backgroundColor: "#020617",
+                    });
+
+                    const res = await fetch(dataUrl);
+                    const blob = await res.blob();
+                    const file = new File([blob], "resultado-twinco.png", { type: "image/png" });
+
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({
+                          files: [file],
+                          title: "Resultado del partido",
+                          text: "Resultado Twinco Padel Manager",
+                        });
+                        toast.success("¡Imagen compartida!");
+                        return;
+                      } catch (err: any) {
+                        if (err?.name === "AbortError" || err?.message === "Share canceled") return;
+                      }
+                    }
+
+                    const a = document.createElement("a");
+                    a.href = dataUrl;
+                    a.download = "resultado-twinco.png";
+                    a.click();
+                    toast.success("Imagen descargada");
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("No se pudo generar la imagen");
+                  }
+                }}
+                className={`w-full mt-2 py-2 rounded-xl font-semibold transition ${
+                  isPlayed(openResultMatch)
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-white/10 text-white/40 cursor-not-allowed"
+                }`}
+              >
+                Compartir imagen
+              </button>
+
+              <button
+                disabled={!isPlayed(openResultMatch)}
+                onClick={async () => {
+                  if (!isPlayed(openResultMatch)) return;
+                  if (!shareCardRef.current) {
+                    toast.error("No se pudo generar la imagen");
+                    return;
+                  }
+
+                  try {
+                    const { toPng } = await import("html-to-image");
+                    const dataUrl = await toPng(shareCardRef.current, {
+                      cacheBust: true,
+                      pixelRatio: 2,
+                      backgroundColor: "#020617",
+                    });
+
+                    const a = document.createElement("a");
+                    a.href = dataUrl;
+                    a.download = "resultado-twinco.png";
+                    a.click();
+                    toast.success("Imagen descargada");
+                  } catch (err) {
+                    console.error(err);
+                    toast.error("No se pudo generar la imagen");
+                  }
+                }}
+                className={`w-full py-2 rounded-xl font-semibold transition ${
+                  isPlayed(openResultMatch)
+                    ? "bg-white/10 hover:bg-white/20 text-white"
+                    : "bg-white/5 text-white/30 cursor-not-allowed"
+                }`}
+              >
+                Descargar imagen
+              </button>
+
+              <p className="text-center text-xs text-white/60">
+                Ideal para WhatsApp e Instagram.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

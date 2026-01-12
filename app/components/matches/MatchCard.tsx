@@ -18,7 +18,6 @@ export type Match = {
   tournament_name?: string | null;
   court?: string | null;
   score?: string | null;
-  // ⚠️ en tu BD puede venir "pending" u otros strings, por eso lo aceptamos como string | null
   winner?: string | null;
   player_1_a?: PlayerValue;
   player_2_a?: PlayerValue;
@@ -27,12 +26,11 @@ export type Match = {
 };
 
 type MatchCardProps = {
-  // Nuevo contrato (recomendado)
   match?: Match;
   playersMap?: Record<number, string>;
   showActions?: boolean;
 
-  // Contrato viejo (compatibilidad con dashboard y otras pantallas)
+  // compatibilidad
   status?: "programado" | "finalizado";
   tournament?: string;
   teamA?: TeamProps;
@@ -59,16 +57,13 @@ export default function MatchCard(props: MatchCardProps) {
   const nameFromValue = (v?: PlayerValue) => {
     if (!v) return "Por definir";
     if (typeof v === "object") return v.name || "Por definir";
-    // number
     return playersMap[v] || `Jugador ${v}`;
   };
 
-  // Normalizamos winner desde match
   const winnerSide = match?.winner ?? null;
   const isWinnerAFromMatch = winnerSide === "A";
   const isWinnerBFromMatch = winnerSide === "B";
 
-  // Teams normalizados (si vienen por props, se respetan; si no, se arman desde match + playersMap)
   const resolvedTeamA: Required<Pick<TeamProps, "p1" | "p2">> & TeamProps = {
     p1: teamA?.p1 ?? nameFromValue(match?.player_1_a),
     p2: teamA?.p2 ?? nameFromValue(match?.player_2_a),
@@ -83,7 +78,6 @@ export default function MatchCard(props: MatchCardProps) {
     winner: teamB?.winner ?? isWinnerBFromMatch,
   };
 
-  // Estado finalizado: si lo pasan por prop, se respeta. Si no, inferimos desde match.
   const inferredFinished =
     !!match?.score &&
     !!winnerSide &&
@@ -93,7 +87,10 @@ export default function MatchCard(props: MatchCardProps) {
   const isFinished = status ? status === "finalizado" : inferredFinished;
 
   const headerLeft = match?.round_name || "Partido";
-  const headerRight = tournament || match?.tournament_name || (match?.tournament_id ? `Torneo #${match.tournament_id}` : "Sin torneo");
+  const headerRight =
+    tournament ||
+    match?.tournament_name ||
+    (match?.tournament_id ? `Torneo #${match.tournament_id}` : "Sin torneo");
 
   const displayDate =
     date ||
@@ -111,13 +108,10 @@ export default function MatchCard(props: MatchCardProps) {
       : undefined);
 
   const displayCourt = court || match?.court || undefined;
-
-  // Score: preferimos match.score (formato completo). Si no existe, usamos score por team si lo hubieran pasado.
   const displayScore = match?.score || null;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           {headerLeft}
@@ -134,10 +128,8 @@ export default function MatchCard(props: MatchCardProps) {
         </span>
       </div>
 
-      {/* Tournament name */}
       <div className="text-xs text-gray-500 font-medium">{headerRight}</div>
 
-      {/* Teams */}
       <div className="flex items-center justify-between text-center">
         <div className="flex-1">
           <p
@@ -164,21 +156,18 @@ export default function MatchCard(props: MatchCardProps) {
         </div>
       </div>
 
-      {/* Score */}
       {isFinished && displayScore && (
         <div className="text-center text-sm font-bold text-green-600">
           {displayScore}
         </div>
       )}
 
-      {/* Info */}
       <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
         {displayDate && <span>📅 {displayDate}</span>}
         {displayTime && <span>⏰ {displayTime}</span>}
         {displayCourt && <span>🎾 {displayCourt}</span>}
       </div>
 
-      {/* Actions (placeholder, la pantalla decide qué acciones mostrar) */}
       {showActions && (
         <div className="pt-2 flex justify-end">
           <button className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">

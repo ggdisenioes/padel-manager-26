@@ -6,10 +6,9 @@ import Link from "next/link";
 import Image from "next/image";
 import toast from "react-hot-toast";
 
-// ✅ Import correcto (Supabase está en /lib/supabase.ts en la raíz)
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
-import  MatchCard  from "../components/matches/MatchCard";
+import MatchCard from "../components/matches/MatchCard";
 
 type PlayerRef = {
   id: number;

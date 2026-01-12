@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { useRole } from "@/app/hooks/useRole";
+import { useRole } from "../../../../app/hooks/useRole";
 import toast from "react-hot-toast";
 
 const supabase = createClient(

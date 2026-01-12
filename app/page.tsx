@@ -474,10 +474,10 @@ export default function DashboardPage() {
 
   // Helper: Genera PNG desde el shareCardRef usando html2canvas (devuelve Blob + URL)
   const generatePngFromShareRef = async () => {
-    if (!shareCardRef.current) return null;
+  if (!shareCardRef.current) return null;
 
+  try {
     const canvas = await html2canvas(shareCardRef.current, {
-      // Use backgroundColor (supported by html2canvas) and cast options to any to satisfy typings
       backgroundColor: "#020617",
       scale: 2,
       useCORS: true,
@@ -492,7 +492,11 @@ export default function DashboardPage() {
 
     const url = URL.createObjectURL(blob);
     return { blob, url };
-  };
+  } catch (err) {
+    console.error("Error generando imagen:", err);
+    return null;
+  }
+};
 
 
   if (isUser) {
@@ -849,7 +853,7 @@ export default function DashboardPage() {
           top: 0,
           left: -10000,
           pointerEvents: "none",
-          zIndex: -1,
+          zIndex: 0,
         }}
       >
         {openResultMatch && isPlayed(openResultMatch) && (

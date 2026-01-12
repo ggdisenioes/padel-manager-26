@@ -1,6 +1,6 @@
 "use client";
 
-import { useRole } from "@/app/hooks/useRole";
+import { useRole } from "../../../app/hooks/useRole";
 import Link from "next/link";
 
 export default function AdminUsersPage() {

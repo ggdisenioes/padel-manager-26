@@ -357,7 +357,7 @@ export default function MatchesPage() {
 
       {openResultMatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
+          <div className="bg-[#0F172A] w-[92vw] max-w-sm rounded-3xl shadow-2xl p-6 sm:p-7 space-y-5 relative text-white overflow-hidden">
             <button
               onClick={() => setOpenResultMatch(null)}
               className="absolute top-3 right-3 text-white/60 hover:text-white"
@@ -367,12 +367,9 @@ export default function MatchesPage() {
 
             {/* LOGO */}
             <div className="flex flex-col items-center gap-1">
-              <Image
-                src="/logo.svg"
+              <img
+                src="/logo.png"
                 alt="Twinco Padel Manager"
-                width={160}
-                height={40}
-                priority
                 className="h-8 w-auto object-contain"
               />
               <span className="text-xs tracking-widest text-green-400">
@@ -381,7 +378,7 @@ export default function MatchesPage() {
             </div>
 
             {/* RESULT */}
-            <div className="text-center space-y-2 mt-4">
+            <div className="text-center space-y-3 mt-2">
               {isPlayed(openResultMatch) ? (
                 <>
                   {/* WINNERS */}
@@ -434,7 +431,7 @@ export default function MatchesPage() {
                   toast.error("No se pudo compartir");
                 }
               }}
-              className={`w-full mt-4 py-2 rounded-xl font-semibold transition ${
+              className={`w-full mt-4 py-3 rounded-xl font-semibold transition ${
                 isPlayed(openResultMatch)
                   ? "bg-green-600 hover:bg-green-700"
                   : "bg-white/10 text-white/40 cursor-not-allowed"

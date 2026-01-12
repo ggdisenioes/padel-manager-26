@@ -368,7 +368,7 @@ export default function MatchesPage() {
             {/* LOGO */}
             <div className="flex flex-col items-center gap-1">
               <img
-                src="/logo.png"
+                src="/logo.svg"
                 alt="Twinco Padel Manager"
                 className="h-8 w-auto object-contain"
               />

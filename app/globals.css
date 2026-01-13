@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,147 +13,52 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ============================= */
-/* FIX DEFINITIVO TEXTO GRIS iOS */
-/* ============================= */
+/* ================================ */
+/* Consistencia Desktop + Mobile    */
+/* (Evita texto claro sobre fondo)  */
+/* ================================ */
 
-/* Forzamos color de texto real en mobile */
-/* Removed html, body color override */
-
-/* Inputs, selects y textareas */
-input,
-textarea,
-select {
-  color: #111827 !important; /* negro real */
-  background-color: #ffffff !important;
-  -webkit-text-fill-color: #111827 !important; /* CLAVE para iOS */
-  opacity: 1 !important;
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
-/* Placeholders */
+/* Form controls: no forzar colores; dejar que Tailwind mande.
+   Solo corregimos el bug de iOS donde el texto queda "gris". */
+input,
+textarea,
+select,
+button {
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
+}
+
 input::placeholder,
 textarea::placeholder {
-  color: #9ca3af !important; /* gray-400 */
-  opacity: 1 !important;
+  color: #9ca3af; /* gray-400 */
+  opacity: 1;
 }
 
-/* Labels y textos de formularios */
-label,
-form span,
-form p {
-  color: #111827 !important;
-}
-
-/* Evita estilos automáticos de Safari */
-input,
-textarea,
-select {
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-/* ============================= */
-/* FIX DEFINITIVO iOS / MOBILE   */
-/* NO TOCAR COLORES DE BRANDING  */
-/* ============================= */
-
-/* Evitar gris automático de Safari iOS */
+/* iOS/Safari: asegura que el "text fill" respete el color real
+   (sin pisar utilidades Tailwind de branding) */
 @supports (-webkit-touch-callout: none) {
-  body {
-    -webkit-text-size-adjust: 100%;
+  main,
+  main * {
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1;
   }
 
-  /* Texto base: solo contenido, NO layout */
-  main h1,
-  main h2,
-  main h3,
-  main h4,
-  main h5,
-  main h6,
-  main p,
-  main li,
-  main td,
-  main th {
-    color: #111827 !important; /* gray-900 */
-    -webkit-text-fill-color: #111827 !important;
-    opacity: 1 !important;
-  }
-
-  /* Respetar utilidades Tailwind en iOS (botones/links) */
-  .text-white,
-  .text-white * {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-  }
-
-  .text-green-600,
-  .text-green-600 * {
-    color: #16a34a !important;
-    -webkit-text-fill-color: #16a34a !important;
-  }
-
-  .text-green-700,
-  .text-green-700 * {
-    color: #15803d !important;
-    -webkit-text-fill-color: #15803d !important;
-  }
-
-  .text-blue-600,
-  .text-blue-600 * {
-    color: #2563eb !important;
-    -webkit-text-fill-color: #2563eb !important;
-  }
-
-  .text-blue-700,
-  .text-blue-700 * {
-    color: #1d4ed8 !important;
-    -webkit-text-fill-color: #1d4ed8 !important;
-  }
-
-  .text-indigo-600,
-  .text-indigo-600 * {
-    color: #4f46e5 !important;
-    -webkit-text-fill-color: #4f46e5 !important;
-  }
-
-  .text-indigo-700,
-  .text-indigo-700 * {
-    color: #4338ca !important;
-    -webkit-text-fill-color: #4338ca !important;
-  }
-
-  .text-red-700,
-  .text-red-700 * {
-    color: #b91c1c !important;
-    -webkit-text-fill-color: #b91c1c !important;
-  }
-
-  /* Formularios */
   input,
   textarea,
-  select {
-    color: #111827 !important;
-    -webkit-text-fill-color: #111827 !important;
-    background-color: #ffffff !important;
-    opacity: 1 !important;
-  }
-
-  input::placeholder,
-  textarea::placeholder {
-    color: #6b7280 !important; /* gray-500 */
-    opacity: 1 !important;
+  select,
+  button {
+    -webkit-text-fill-color: currentColor !important;
+    opacity: 1;
   }
 }

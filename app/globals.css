@@ -45,6 +45,16 @@ textarea::placeholder {
   opacity: 1;
 }
 
+/* Botones oscuros (ej: login) deben tener texto claro para buen contraste */
+button[class*="bg-slate-9"],
+button[class*="bg-gray-9"],
+button[class*="bg-zinc-9"],
+button[class*="bg-neutral-9"],
+button.bg-black {
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
 /* iOS/Safari: asegura que el "text fill" respete el color real
    (sin pisar utilidades Tailwind de branding) */
 @supports (-webkit-touch-callout: none) {
@@ -60,5 +70,14 @@ textarea::placeholder {
   button {
     -webkit-text-fill-color: currentColor !important;
     opacity: 1;
+  }
+
+  button[class*="bg-slate-9"],
+  button[class*="bg-gray-9"],
+  button[class*="bg-zinc-9"],
+  button[class*="bg-neutral-9"],
+  button.bg-black {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
   }
 }

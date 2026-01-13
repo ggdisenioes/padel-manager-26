@@ -132,6 +132,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // IMPORTANT: Only protect admin routes at the middleware layer.
+  // Many Supabase setups store the session in the browser (localStorage) and not in cookies,
+  // which means middleware/SSR cannot reliably detect the session. RLS still protects data.
+  // This avoids redirect loops and "logged-in but stuck on /login".
+  if (!isAdminPath(pathname)) {
+    return NextResponse.next();
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -185,21 +193,8 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // If the user is already authenticated, never keep them on the login page.
-  // This fixes the "logged-in but stuck on /login" state.
-  if (pathname === "/login" && user) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/";
-    return withSupabaseCookies(NextResponse.redirect(url));
-  }
-
-  // Not authenticated → redirect to login
+  // Admin paths must be authenticated
   if (!user) {
-    // Allow the login page itself to render when unauthenticated
-    if (pathname === "/login") {
-      return res;
-    }
-
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return withSupabaseCookies(NextResponse.redirect(url));

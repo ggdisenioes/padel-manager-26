@@ -22,6 +22,10 @@ type CookieToSet = {
 function isPublicPath(pathname: string) {
   return (
     pathname === "/login" ||
+    // Common auth callback / confirm routes
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/api/auth") ||
+    // Next.js assets
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/public")
@@ -30,6 +34,10 @@ function isPublicPath(pathname: string) {
 
 function isAdminPath(pathname: string) {
   return pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+}
+
+function isNonAdminApiPath(pathname: string) {
+  return pathname.startsWith("/api/") && !isAdminPath(pathname);
 }
 
 function decodeJwtPayload<T = unknown>(token: string): T | null {
@@ -115,6 +123,13 @@ export async function middleware(req: NextRequest) {
 
   // Allow public paths through without touching auth
   if (isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // IMPORTANT: Don't block non-admin API routes in middleware.
+  // Auth for API routes should be handled inside the route handlers and/or via DB RLS.
+  // This prevents login flows (callbacks, token exchange) from being broken.
+  if (isNonAdminApiPath(pathname)) {
     return NextResponse.next();
   }
 

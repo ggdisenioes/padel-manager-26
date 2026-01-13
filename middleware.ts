@@ -146,6 +146,13 @@ export async function middleware(req: NextRequest) {
 
   const res = NextResponse.next();
 
+  // If Supabase refreshes/updates auth cookies during this request, they are written to `res`.
+  // When we return a redirect/JSON response, we must carry those cookies over or see login loops.
+  const withSupabaseCookies = (out: NextResponse) => {
+    res.cookies.getAll().forEach((c) => out.cookies.set(c));
+    return out;
+  };
+
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -183,7 +190,7 @@ export async function middleware(req: NextRequest) {
   if (!user) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return withSupabaseCookies(NextResponse.redirect(url));
   }
 
   // Prefer JWT custom claims (fast, no DB hit). Fall back to DB if claims aren't present yet.
@@ -214,7 +221,7 @@ export async function middleware(req: NextRequest) {
     if (profileError || !profile) {
       const url = req.nextUrl.clone();
       url.pathname = "/login";
-      return NextResponse.redirect(url);
+      return withSupabaseCookies(NextResponse.redirect(url));
     }
 
     role = profile.role ?? null;
@@ -225,19 +232,21 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("disabled", "1");
-    return NextResponse.redirect(url);
+    return withSupabaseCookies(NextResponse.redirect(url));
   }
 
   // Admin routes require admin role
   if (isAdminPath(pathname) && role !== "admin") {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return withSupabaseCookies(
+        NextResponse.json({ error: "forbidden" }, { status: 403 })
+      );
     }
 
     const url = req.nextUrl.clone();
     url.pathname = "/";
     url.searchParams.set("unauthorized", "1");
-    return NextResponse.redirect(url);
+    return withSupabaseCookies(NextResponse.redirect(url));
   }
 
   return res;

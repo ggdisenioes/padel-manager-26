@@ -21,7 +21,6 @@ type CookieToSet = {
 
 function isPublicPath(pathname: string) {
   return (
-    pathname === "/login" ||
     // Common auth callback / confirm routes
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api/auth") ||
@@ -186,8 +185,21 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // If the user is already authenticated, never keep them on the login page.
+  // This fixes the "logged-in but stuck on /login" state.
+  if (pathname === "/login" && user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    return withSupabaseCookies(NextResponse.redirect(url));
+  }
+
   // Not authenticated → redirect to login
   if (!user) {
+    // Allow the login page itself to render when unauthenticated
+    if (pathname === "/login") {
+      return res;
+    }
+
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return withSupabaseCookies(NextResponse.redirect(url));

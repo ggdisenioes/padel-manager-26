@@ -163,6 +163,19 @@ export async function POST(req: Request) {
         email,
         password,
         email_confirm: true,
+        // IMPORTANTE:
+        // Si existe un trigger en auth.users (ej: public.handle_new_user) que crea el perfil
+        // y tu schema exige tenant_id NOT NULL, necesitamos pasar el tenant_id en metadata
+        // para que el trigger lo pueda leer desde `new.raw_user_meta_data`.
+        user_metadata: {
+          tenant_id: profile.tenant_id,
+          role,
+        },
+        // Algunos setups leen raw_app_meta_data, lo duplicamos por compatibilidad.
+        app_metadata: {
+          tenant_id: profile.tenant_id,
+          role,
+        } as any,
       });
 
     if (createUserError || !createdUser.user) {

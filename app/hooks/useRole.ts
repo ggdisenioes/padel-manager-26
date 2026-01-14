@@ -11,180 +11,127 @@ const supabase = createClient(
 
 export type UserRole = "admin" | "manager" | "user";
 
-type ProfileRow = {
-  role: UserRole | string | null;
-  // legacy
-  active?: boolean | null;
-  // new naming (tenants)
-  is_disabled?: boolean | null;
-  disabled?: boolean | null;
-  tenant_slug?: string | null;
-  tenant_id?: number | null;
+type TokenClaims = {
+  // Compatibilidad: hay proyectos que usan role/active y otros user_role/user_active
+  role?: string;
+  active?: boolean;
+  user_role?: string;
+  user_active?: boolean;
+  app_metadata?: {
+    role?: string;
+    active?: boolean;
+    user_role?: string;
+    user_active?: boolean;
+  };
 };
 
-async function fetchProfileForUser(userId: string): Promise<ProfileRow | null> {
-  // 1) Prefer the tenant-aware view/table if it exists
-  const tryTenantView = async () => {
-    const { data, error } = await supabase
-      .from("profiles_with_tenant")
-      .select("role, tenant_slug, tenant_id, is_disabled, disabled, active")
-      .eq("id", userId)
-      .single();
+function decodeJwtPayload<T = unknown>(token: string): T | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
 
-    if (!error && data) return data as ProfileRow;
+    const payload = parts[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "===".slice((base64.length + 3) % 4);
 
-    // If it doesn't exist, Supabase usually returns a PostgREST error mentioning the relation
-    const msg = (error as any)?.message ?? "";
-    const code = (error as any)?.code ?? "";
-    if (
-      msg.includes("does not exist") ||
-      msg.includes("relation") ||
-      code === "42P01" // undefined_table
-    ) {
-      return null;
-    }
-
-    // If RLS denies or row not found, we still fallback to legacy profiles
-    console.warn("[useRole] profiles_with_tenant lookup failed:", error);
+    const json = atob(padded);
+    return JSON.parse(json) as T;
+  } catch {
     return null;
-  };
-
-  const fromTenant = await tryTenantView();
-  if (fromTenant) return fromTenant;
-
-  // 2) Fallback: legacy table
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("role, active")
-    .eq("id", userId)
-    .single();
-
-  if (error || !data) return null;
-  return data as ProfileRow;
+  }
 }
 
 export function useRole() {
   const [role, setRole] = useState<UserRole>("user");
-  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
-  const [tenantId, setTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
-    const signOutDisabled = async () => {
-      try {
-        toast.error("Tu cuenta fue desactivada. Contactá al administrador.");
-      } catch {}
-
-      try {
-        await supabase.auth.signOut();
-      } catch {}
-
-      try {
-        sessionStorage.setItem("auth_disabled", "1");
-      } catch {}
-
-      if (typeof window !== "undefined") {
-        window.location.href = "/login?disabled=1";
-      }
-    };
-
     const loadRole = async () => {
       try {
         const {
           data: { session },
-          error: sessionError,
         } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.warn("[useRole] getSession error", sessionError);
-        }
 
         if (!session?.user?.id) {
           if (active) {
             setRole("user");
-            setTenantSlug(null);
-            setTenantId(null);
             setLoading(false);
           }
           return;
         }
 
+        // 1) Preferimos claims del JWT (no depende de RLS)
+        const token = session.access_token;
+        const claims = token ? decodeJwtPayload<TokenClaims>(token) : null;
+        const roleFromToken =
+          claims?.role ??
+          claims?.user_role ??
+          claims?.app_metadata?.role ??
+          claims?.app_metadata?.user_role;
+
+        const activeFromToken =
+          claims?.active ??
+          claims?.user_active ??
+          claims?.app_metadata?.active ??
+          claims?.app_metadata?.user_active;
+
+        if (activeFromToken === false) {
+          console.warn("[useRole] inactive user (JWT claim), signing out", session.user.id);
+          toast.error("Tu cuenta fue desactivada. Contactá al administrador.");
+          await supabase.auth.signOut();
+          try {
+            sessionStorage.setItem("auth_disabled", "1");
+          } catch {}
+          if (typeof window !== "undefined") {
+            window.location.href = "/login?disabled=1";
+          }
+          return;
+        }
+
+        const validRoles: UserRole[] = ["admin", "manager", "user"];
+        if (typeof roleFromToken === "string" && validRoles.includes(roleFromToken as UserRole)) {
+          if (active) setRole(roleFromToken as UserRole);
+          // Si ya tenemos el rol del token, evitamos pegarle a la DB.
+          return;
+        }
+
         const userId = session.user.id;
 
-        const profile = await fetchProfileForUser(userId);
+        // 2) Fallback a DB (por si el hook de claims todavía no está activo)
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("role, active")
+          .eq("id", userId)
+          .single();
 
-        if (!profile) {
-          console.warn("[useRole] no profile row found for user", userId);
-          if (active) {
-            setRole("user");
-            setTenantSlug(null);
-            setTenantId(null);
+        if (error || !data) {
+          console.warn("[useRole] failed to fetch role from profiles", error);
+          if (active) setRole("user");
+          return;
+        }
+
+        if (data.active === false) {
+          console.warn("[useRole] inactive user, signing out", userId);
+          toast.error("Tu cuenta fue desactivada. Contactá al administrador.");
+          await supabase.auth.signOut();
+          try { sessionStorage.setItem("auth_disabled", "1"); } catch {}
+          if (typeof window !== "undefined") {
+            window.location.href = "/login?disabled=1";
           }
           return;
         }
 
-        // Disabled logic (SAFE): only consider disabled when the flag is explicitly true/false.
-        // This prevents false positives when a view returns NULLs.
-        const isDisabled =
-          profile.is_disabled === true ||
-          profile.disabled === true ||
-          profile.active === false;
-
-        // Helpful debug
-        console.log("[useRole] profile loaded:", {
-          userId,
-          role: profile.role,
-          tenant_slug: profile.tenant_slug,
-          tenant_id: profile.tenant_id,
-          is_disabled: profile.is_disabled,
-          disabled: profile.disabled,
-          active: profile.active,
-        });
-
-        if (isDisabled) {
-          console.warn("[useRole] disabled user detected", userId);
-
-          // If the user is actually disabled in DB, we sign out.
-          // But avoid redirect loops: do it only once per browser session.
-          const alreadyRedirected =
-            typeof window !== "undefined" && sessionStorage.getItem("auth_disabled") === "1";
-
-          if (!alreadyRedirected) {
-            await signOutDisabled();
-          } else {
-            try {
-              toast.error("Tu cuenta figura como desactivada. Si creés que es un error, avisá al administrador.");
-            } catch {}
-            if (active) {
-              setRole("user");
-              setTenantSlug(null);
-              setTenantId(null);
-              setLoading(false);
-            }
-          }
-          return;
-        }
-
-        if (active) {
-          // tenant context (optional)
-          setTenantSlug(profile.tenant_slug ?? null);
-          setTenantId(typeof profile.tenant_id === "number" ? profile.tenant_id : null);
-
-          const rawRole = String(profile.role ?? "user").toLowerCase();
-          const validRoles: UserRole[] = ["admin", "manager", "user"];
-          setRole(validRoles.includes(rawRole as UserRole) ? (rawRole as UserRole) : "user");
-
-          console.log("[useRole] role detected:", rawRole);
+        if (validRoles.includes(data.role)) {
+          if (active) setRole(data.role);
+        } else {
+          console.warn("[useRole] invalid role value", data.role);
+          if (active) setRole("user");
         }
       } catch (err) {
         console.error("[useRole] unexpected error:", err);
-        if (active) {
-          setRole("user");
-          setTenantSlug(null);
-          setTenantId(null);
-        }
+        if (active) setRole("user");
       } finally {
         if (active) setLoading(false);
       }
@@ -199,8 +146,6 @@ export function useRole() {
 
   return {
     role,
-    tenantSlug,
-    tenantId,
     isAdmin: role === "admin",
     isManager: role === "manager",
     isUser: role === "user",

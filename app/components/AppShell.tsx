@@ -1,11 +1,11 @@
 // ./app/components/AppShell.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { Toaster } from "react-hot-toast";
-import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -13,13 +13,46 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+function buildCleanUrl(pathname: string, params: URLSearchParams) {
+  const qs = params.toString();
+  return qs ? `${pathname}?${qs}` : pathname;
+}
+
+function getBaseDomain(hostname: string) {
+  const parts = hostname.split(".");
+  if (parts.length < 2) return hostname;
+  return parts.slice(-2).join(".");
+}
+
+function getMessageFromError(code: string | null) {
+  switch (code) {
+    case "tenant_incorrecto":
+      return "Este usuario pertenece a otro club. Te redirigimos al subdominio correcto.";
+    case "usuario_deshabilitado":
+      return "Usuario deshabilitado. Contactá al administrador.";
+    case "tenant_no_asignado":
+      return "Tu usuario no tiene club asignado. Contactá al administrador.";
+    case "perfil_no_encontrado":
+      return "No se pudo leer tu perfil. Probá cerrar sesión e ingresar nuevamente.";
+    case "tenant_invalido":
+      return "Tu club no es válido. Contactá al administrador.";
+    default:
+      return null;
+  }
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
-
+  const searchParams = useSearchParams();
   const router = useRouter();
+
   const [checkingSession, setCheckingSession] = useState(true);
 
+  // Evita duplicar toasts en re-renders
+  const lastToastKeyRef = useRef<string>("");
+
+  // 1) Session guard (lo que ya tenías)
   useEffect(() => {
     setMobileOpen(false);
 
@@ -44,15 +77,40 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     checkSession();
 
-    // Limpiar flag cuando el usuario ya está en login
     if (pathname === "/login") {
       sessionStorage.removeItem("unauthorized_redirect");
     }
-  }, [pathname, pathname === "/login"]);
+  }, [pathname, router]);
 
-  if (checkingSession) {
-    return null;
-  }
+  // 2) Mejora PRO: toast + limpieza de URL para errores “soft”
+  useEffect(() => {
+    const error = searchParams.get("error");
+    const tenant = searchParams.get("tenant");
+
+    if (!error) return;
+
+    const msg = getMessageFromError(error);
+    if (!msg) return;
+
+    const toastKey = `${pathname}|${error}|${tenant ?? ""}`;
+    if (lastToastKeyRef.current === toastKey) return;
+    lastToastKeyRef.current = toastKey;
+
+    // Toast PRO (no invasivo)
+    toast.error(msg, { duration: 5000 });
+
+    // Limpieza de URL: borramos solo los params que usamos para el aviso
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("error");
+    params.delete("tenant");
+
+    const cleanUrl = buildCleanUrl(pathname, params);
+
+    // No rompemos navegación, no recargamos todo
+    router.replace(cleanUrl);
+  }, [pathname, searchParams, router]);
+
+  if (checkingSession) return null;
 
   return (
     <>
@@ -64,7 +122,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Sidebar />
         </div>
 
-        {/* COLUMNA PRINCIPAL (HEADER + CONTENIDO) */}
+        {/* COLUMNA PRINCIPAL */}
         <div className="flex-1 flex flex-col">
           {/* HEADER MOBILE */}
           <header className="md:hidden flex items-center justify-between px-4 py-4 bg-[#05070b] border-b border-gray-800">
@@ -84,57 +142,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => setMobileOpen((o) => !o)}
             >
               {mobileOpen ? (
-                // Icono X
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeWidth={1.8}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               ) : (
-                // Icono hamburguesa
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeWidth={1.8}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
+                <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               )}
             </button>
           </header>
 
-          {/* CONTENIDO PRINCIPAL */}
-          <div className="flex-1 bg-gray-50">
-            {children}
-          </div>
+          {/* CONTENIDO */}
+          <div className="flex-1 bg-gray-50">{children}</div>
         </div>
 
-        {/* OVERLAY MOBILE DEL SIDEBAR */}
+        {/* OVERLAY MOBILE */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            {/* Fondo oscurecido clicable para cerrar */}
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setMobileOpen(false)}
-            />
-
-            {/* Sidebar deslizándose desde la izquierda */}
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
             <div className="absolute inset-y-0 left-0 w-64 max-w-[80%]">
-              {/* El Sidebar ya tiene scroll interno en el menú */}
               <Sidebar onLinkClick={() => setMobileOpen(false)} />
             </div>
           </div>

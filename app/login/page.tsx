@@ -1,63 +1,62 @@
 "use client";
 
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
+import { useRouter, useSearchParams } from "next/navigation";
 
-type TokenClaims = {
-  user_role?: string;
-  user_active?: boolean;
-  app_metadata?: { user_role?: string; user_active?: boolean };
-};
+function getBaseDomain(hostname: string) {
+  const parts = hostname.split(".");
+  if (parts.length < 2) return hostname;
+  return parts.slice(-2).join(".");
+}
 
-function decodeJwtPayload<T = unknown>(token: string): T | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-
-    const payload = parts[1];
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64 + '==='.slice((base64.length + 3) % 4);
-
-    const json = atob(padded);
-    return JSON.parse(json) as T;
-  } catch {
-    return null;
+function getLoginMessage(errorCode: string | null) {
+  switch (errorCode) {
+    case "tenant_incorrecto":
+      return "Este usuario pertenece a otro club. Ingresá desde el subdominio correcto.";
+    case "usuario_deshabilitado":
+      return "Usuario deshabilitado, contacte su administrador.";
+    case "tenant_no_asignado":
+      return "Tu usuario no tiene club asignado. Contactá al administrador.";
+    case "perfil_no_encontrado":
+      return "No se pudo leer tu perfil. Probá cerrar sesión e ingresar nuevamente.";
+    case "tenant_invalido":
+      return "Tu club no es válido. Contactá al administrador.";
+    default:
+      return null;
   }
 }
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const searchParams = useSearchParams();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const errorCode = searchParams.get("error");
+  const tenantSlug = searchParams.get("tenant");
+
+  const tenantRedirectUrl = useMemo(() => {
+    if (!tenantSlug) return null;
+    if (typeof window === "undefined") return null;
+
+    const base = getBaseDomain(window.location.hostname);
+    return `https://${tenantSlug}.${base}`;
+  }, [tenantSlug]);
+
   useEffect(() => {
-    // Soporta redirecciones desde middleware / hooks con ?disabled=1
-    // y también el flag en sessionStorage (por si el navegador pierde los query params).
-    const url = new URL(window.location.href);
-    const disabled = url.searchParams.get('disabled') === '1';
-    let disabledFromStorage = false;
-
-    try {
-      disabledFromStorage = sessionStorage.getItem('auth_disabled') === '1';
-      if (disabledFromStorage) sessionStorage.removeItem('auth_disabled');
-    } catch {
-      // ignore
-    }
-
-    if (disabled || disabledFromStorage) {
-      setErrorMsg('Usuario deshabilitado, contacte su administrador.');
-    }
-  }, []);
+    const msg = getLoginMessage(errorCode);
+    if (msg) setErrorMsg(msg);
+  }, [errorCode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg(null);
 
-    // 1. Intentar login
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -73,74 +72,56 @@ export default function LoginPage() {
       return;
     }
 
-    // 2. Verificar si el usuario está activo.
-    //    - Preferimos leerlo desde el JWT (no depende de RLS).
-    //    - Si no existe el claim, intentamos verificar en `profiles`.
-    //    - Si la verificación por DB falla por permisos/RLS, NO bloqueamos el login:
-    //      asumimos activo para no romper el acceso (el control real debe estar en RLS).
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("active")
+      .eq("id", data.user.id)
+      .single();
 
-    const token = data.session?.access_token;
-    const claims = token ? decodeJwtPayload<TokenClaims>(token) : null;
-    const activeFromToken = claims?.user_active ?? claims?.app_metadata?.user_active;
-    const activeFromUserMeta = (data.user.app_metadata as any)?.user_active;
-
-    const activeCandidate =
-      typeof activeFromToken === 'boolean'
-        ? activeFromToken
-        : typeof activeFromUserMeta === 'boolean'
-          ? activeFromUserMeta
-          : null;
-
-    if (activeCandidate === false) {
+    if (profileError || !profile || profile.active === false) {
       await supabase.auth.signOut();
-      setErrorMsg('Usuario deshabilitado, contacte su administrador.');
+      setErrorMsg("Usuario deshabilitado, contacte su administrador.");
       setLoading(false);
       return;
     }
 
-    if (activeCandidate === null) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('active')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      // Si está explícitamente deshabilitado, bloqueamos.
-      if (profile?.active === false) {
-        await supabase.auth.signOut();
-        setErrorMsg('Usuario deshabilitado, contacte su administrador.');
-        setLoading(false);
-        return;
-      }
-
-      // Si falla por RLS/permisos, dejamos continuar para no romper la app.
-      if (profileError) {
-        console.warn('[login] No se pudo verificar profiles.active (posible RLS):', profileError);
-      }
-    }
-
-    // 4. Usuario activo → continuar
     router.push("/");
     router.refresh();
   };
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-900 relative overflow-hidden">
-      {/* Fondo decorativo sutil */}
       <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-        <div className="absolute right-0 top-0 w-64 h-64 bg-[#ccff00] rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute right-0 top-0 w-64 h-64 bg-[#ccff00] rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2" />
       </div>
 
       <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md z-10 border-t-4 border-[#ccff00]">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-extrabold text-gray-900 italic tracking-tight">
-            TWINCO
-          </h1>
+        <div className="text-center mb-6">
+          <h1 className="text-4xl font-extrabold text-gray-900 italic tracking-tight">TWINCO</h1>
           <span className="inline-block bg-gray-900 text-[#ccff00] px-2 py-0.5 text-xs font-bold tracking-[0.2em] uppercase rounded-sm mt-1">
             Pádel Manager
           </span>
           <p className="text-gray-400 text-sm mt-4">Bienvenido al club</p>
         </div>
+
+        {/* Banner PRO para tenant incorrecto */}
+        {errorCode === "tenant_incorrecto" && (
+          <div className="bg-amber-50 border-l-4 border-amber-500 text-amber-900 p-3 mb-4 text-sm rounded-r">
+            <p className="font-semibold">Acceso por subdominio incorrecto</p>
+            <p className="mt-1">
+              Este usuario pertenece a otro club. Para evitar errores, ingresá desde el subdominio correcto.
+            </p>
+
+            {tenantRedirectUrl && (
+              <a
+                href={tenantRedirectUrl}
+                className="inline-flex mt-3 items-center justify-center rounded-lg bg-gray-900 text-white font-bold px-4 py-2 hover:bg-black transition"
+              >
+                Ir al club correcto
+              </a>
+            )}
+          </div>
+        )}
 
         {errorMsg && (
           <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 mb-6 text-sm rounded-r">
@@ -178,13 +159,20 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-lg hover:bg-black transition duration-200 disabled:opacity-70 shadow-lg"
           >
-            {loading ? 'Accediendo...' : 'Iniciar Sesión'}
+            {loading ? "Accediendo..." : "Iniciar Sesión"}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-100 text-center">
           <p className="text-xs text-gray-400">
-            Desarrollado por <a href="https://ggdisenio.es" target="_blank" className="text-gray-600 hover:text-[#aacc00] font-bold transition">GGDisenio.es</a>
+            Desarrollado por{" "}
+            <a
+              href="https://ggdisenio.es"
+              target="_blank"
+              className="text-gray-600 hover:text-[#aacc00] font-bold transition"
+            >
+              GGDisenio.es
+            </a>
           </p>
         </div>
       </div>

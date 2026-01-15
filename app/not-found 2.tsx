@@ -1,6 +1,6 @@
-// app/_not-found/page.tsx
+// app/not-found.tsx
 
-export default function InternalNotFoundPage() {
+export default function NotFound() {
   return (
     <main
       style={{

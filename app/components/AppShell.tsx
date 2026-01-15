@@ -6,22 +6,21 @@ import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { Toaster } from "react-hot-toast";
 import toast from "react-hot-toast";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+function getSupabaseClient() {
+  // Importante: NO crear el cliente si faltan envs.
+  // Esto evita que falle el prerender/build (por ejemplo en /_not-found).
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
 
 function buildCleanUrl(pathname: string, params: URLSearchParams) {
   const qs = params.toString();
   return qs ? `${pathname}?${qs}` : pathname;
-}
-
-function getBaseDomain(hostname: string) {
-  const parts = hostname.split(".");
-  if (parts.length < 2) return hostname;
-  return parts.slice(-2).join(".");
 }
 
 function getMessageFromError(code: string | null) {
@@ -36,6 +35,8 @@ function getMessageFromError(code: string | null) {
       return "No se pudo leer tu perfil. Probá cerrar sesión e ingresar nuevamente.";
     case "tenant_invalido":
       return "Tu club no es válido. Contactá al administrador.";
+    case "config_supabase":
+      return "Falta configuración de Supabase en el entorno. Revisá las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.";
     default:
       return null;
   }
@@ -49,6 +50,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const [checkingSession, setCheckingSession] = useState(true);
 
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+
   // Evita duplicar toasts en re-renders
   const lastToastKeyRef = useRef<string>("");
 
@@ -58,14 +61,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     const isLogin = pathname === "/login";
     if (isLogin) {
+      sessionStorage.removeItem("unauthorized_redirect");
       setCheckingSession(false);
       return;
     }
 
     const checkSession = async () => {
+      if (!supabaseRef.current) {
+        supabaseRef.current = getSupabaseClient();
+      }
+
+      // Si falta configuración de Supabase, no rompemos el build ni el runtime.
+      // Redirigimos al login para evitar pantallas en blanco.
+      if (!supabaseRef.current) {
+        setCheckingSession(false);
+        router.replace("/login?error=config_supabase");
+        return;
+      }
+
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await supabaseRef.current.auth.getSession();
 
       if (!session) {
         router.replace("/login");
@@ -76,10 +92,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
 
     checkSession();
-
-    if (pathname === "/login") {
-      sessionStorage.removeItem("unauthorized_redirect");
-    }
   }, [pathname, router]);
 
   // 2) Mejora PRO: toast + limpieza de URL para errores “soft”

@@ -4,7 +4,8 @@
 
 import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react'; // ✅ CORRECCIÓN: Se cambió '=>' por 'from'
-import { supabase } from '../lib/supabase'; // Asegúrate de la ruta correcta
+import { supabase } from '../lib/supabase';
+import { getTenantId } from '../lib/tenant'; // Asegúrate de la ruta correcta
 import { useRole } from '../hooks/useRole';
 import Card from '../components/Card';
 import toast from 'react-hot-toast'; // Para notificaciones
@@ -27,8 +28,12 @@ const logAction = async ({
 
   if (!user) return;
 
+  const tenantId = await getTenantId();
+  if (!tenantId) return;
+
   await supabase.from('action_logs').insert([
     {
+      tenant_id: tenantId,
       user_id: user.id,
       user_email: user.email,
       action,

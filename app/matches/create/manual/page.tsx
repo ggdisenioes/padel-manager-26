@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 
 import { supabase } from "../../../lib/supabase";
+import { getTenantId } from "../../../lib/tenant";
 import { useRole } from "../../../hooks/useRole";
 
 type Player = {
@@ -117,7 +118,15 @@ export default function CreateMatchManualPage() {
       return;
     }
 
+    const tenantId = await getTenantId();
+    if (!tenantId) {
+      toast.error("No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.");
+      return;
+    }
+
+
     const { error } = await supabase.from("matches").insert({
+      tenant_id: tenantId,
       tournament_id: Number(tournamentId),
       round_name: form.round_name || "Partido",
       place: form.place || null,

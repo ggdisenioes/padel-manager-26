@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "../../../lib/supabase";
+import { getTenantId } from "../../../lib/tenant";
 import { useRole } from "../../../hooks/useRole";
 
 type Player = {
@@ -76,6 +77,13 @@ export default function CreateFriendlyMatchPage() {
 
     setLoading(true);
 
+    const tenantId = await getTenantId();
+    if (!tenantId) {
+      toast.error("No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.");
+      setLoading(false);
+      return;
+    }
+
     const shuffled = [...selected].sort(() => Math.random() - 0.5);
 
     const inserts = [];
@@ -85,6 +93,7 @@ export default function CreateFriendlyMatchPage() {
       if (group.length < 4) break;
 
       inserts.push({
+        tenant_id: tenantId,
         tournament_id: null,
         round_name: "Partido amistoso",
         start_time: new Date().toISOString(),

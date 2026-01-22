@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
+import { getTenantId } from "../../../lib/tenant";
 import { useRole } from "../../../hooks/useRole";
 import toast from "react-hot-toast";
 
@@ -98,6 +99,13 @@ export default function CreateRandomMatchesPage() {
 
     setCreating(true);
 
+    const tenantId = await getTenantId();
+    if (!tenantId) {
+      toast.error("No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.");
+      setCreating(false);
+      return;
+    }
+
     const shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
     const matches = [];
 
@@ -105,6 +113,7 @@ export default function CreateRandomMatchesPage() {
       const [a1, a2, b1, b2] = shuffled.slice(i, i + 4);
 
       matches.push({
+        tenant_id: tenantId,
         tournament_id: Number(tournamentId),
         player_1_a: a1,
         player_2_a: a2,

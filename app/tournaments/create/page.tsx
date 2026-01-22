@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 
 import Card from "../../components/Card";
 import { supabase } from "../../lib/supabase";
+import { getTenantId } from "../../lib/tenant";
 import { logAction } from "../../lib/audit";
 
 type TournamentInsert = {
@@ -34,6 +35,13 @@ export default function CreateTournament() {
 
     setLoading(true);
 
+    const tenantId = await getTenantId();
+    if (!tenantId) {
+      toast.error("No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.");
+      setLoading(false);
+      return;
+    }
+
     const finalCategory = isCustomCategory
       ? customCategory.trim()
       : category;
@@ -44,7 +52,8 @@ export default function CreateTournament() {
       return;
     }
 
-    const payload: TournamentInsert = {
+    const payload: TournamentInsert & { tenant_id: string } = {
+      tenant_id: tenantId,
       name: name.trim(),
       category: finalCategory,
       status,

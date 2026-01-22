@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import toast from "react-hot-toast";
+import { toPng } from "html-to-image";
 
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
@@ -50,6 +50,8 @@ export default function MatchesPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
 
   const [openResultMatch, setOpenResultMatch] = useState<Match | null>(null);
+  const exportResultRef = useRef<HTMLDivElement | null>(null);
+  const [sharingResult, setSharingResult] = useState(false);
 
   // Si entran con /matches?status=pending, forzamos la vista pendientes
   useEffect(() => {
@@ -65,7 +67,8 @@ export default function MatchesPage() {
 
       const { data: matchesData, error: matchError } = await supabase
         .from("matches")
-        .select(`
+        .select(
+          `
           id,
           start_time,
           tournament_id,
@@ -76,7 +79,8 @@ export default function MatchesPage() {
           player_2_a:players!matches_player_2_a_fkey ( id, name ),
           player_1_b:players!matches_player_1_b_fkey ( id, name ),
           player_2_b:players!matches_player_2_b_fkey ( id, name )
-        `)
+        `
+        )
         .order("start_time", { ascending: true })
         .returns<Match[]>();
 
@@ -116,12 +120,97 @@ export default function MatchesPage() {
     };
   }, []);
 
-  const isPlayed = (m: Match) => !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
+  const isPlayed = (m: Match) =>
+    !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
 
   const formatScoreForDisplay = (raw: string | null) => {
     if (!raw) return "";
     // Accept formats like "6-4 4-6" or "6 4" and normalize spacing
     return raw.replace(/\s+/g, " ").trim();
+  };
+
+  const buildTeamName = (p1?: PlayerRef | null, p2?: PlayerRef | null) => {
+    const a = p1?.name ? String(p1.name).trim() : "";
+    const b = p2?.name ? String(p2.name).trim() : "";
+    if (a && b) return `${a} / ${b}`;
+    return a || b || "";
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleShareResultAsImage = async (m: Match) => {
+    if (!isPlayed(m)) return;
+    if (!exportResultRef.current) {
+      toast.error("No se pudo generar la imagen");
+      return;
+    }
+
+    const teamWinners =
+      m.winner === "A"
+        ? buildTeamName(m.player_1_a, m.player_2_a)
+        : buildTeamName(m.player_1_b, m.player_2_b);
+
+    const teamLosers =
+      m.winner === "A"
+        ? buildTeamName(m.player_1_b, m.player_2_b)
+        : buildTeamName(m.player_1_a, m.player_2_a);
+
+    const score = formatScoreForDisplay(m.score);
+
+    const shareText = `TWINCO PADEL MANAGER\n\n${teamWinners}\n${score}\n${teamLosers}`;
+
+    try {
+      setSharingResult(true);
+
+      // iOS/Safari: esperar que las fuentes estén listas para que no salga cortado
+      // @ts-ignore
+      if (document.fonts?.ready) {
+        // @ts-ignore
+        await document.fonts.ready;
+      }
+
+      const dataUrl = await toPng(exportResultRef.current, {
+        cacheBust: true,
+        pixelRatio: 3,
+      });
+
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], "resultado-padelx.png", {
+        type: "image/png",
+      });
+
+      const navAny = navigator as any;
+      if (navAny?.canShare?.({ files: [file] }) && navAny?.share) {
+        await navAny.share({
+          files: [file],
+          title: "Resultado del partido",
+          text: "Resultado del partido",
+        });
+        return;
+      }
+
+      // Fallback desktop / browsers sin share de archivos: descargamos y copiamos texto
+      downloadBlob(blob, "resultado-padelx.png");
+      try {
+        await navigator.clipboard.writeText(shareText);
+        toast.success("Imagen descargada y resultado copiado");
+      } catch {
+        toast.success("Imagen descargada");
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return;
+      console.error(err);
+      toast.error("No se pudo compartir el resultado");
+    } finally {
+      setSharingResult(false);
+    }
   };
 
   // 1️⃣ AGREGAR FUNCIÓN handleDeleteMatch
@@ -131,10 +220,7 @@ export default function MatchesPage() {
     );
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("matches")
-      .delete()
-      .eq("id", matchId);
+    const { error } = await supabase.from("matches").delete().eq("id", matchId);
 
     if (error) {
       console.error(error);
@@ -156,9 +242,7 @@ export default function MatchesPage() {
       if (filterTournament === "friendly") {
         result = result.filter((m) => m.tournament_id === null);
       } else {
-        result = result.filter(
-          (m) => String(m.tournament_id) === filterTournament
-        );
+        result = result.filter((m) => String(m.tournament_id) === filterTournament);
       }
     }
 
@@ -170,15 +254,10 @@ export default function MatchesPage() {
 
     if (filterCategory !== "all") {
       const tournamentIds = tournaments
-        .filter(
-          (t) =>
-            t.category?.toLowerCase() === filterCategory.toLowerCase()
-        )
+        .filter((t) => t.category?.toLowerCase() === filterCategory.toLowerCase())
         .map((t) => t.id);
 
-      result = result.filter(
-        (m) => m.tournament_id && tournamentIds.includes(m.tournament_id)
-      );
+      result = result.filter((m) => m.tournament_id && tournamentIds.includes(m.tournament_id));
     }
 
     return result;
@@ -200,19 +279,25 @@ export default function MatchesPage() {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setView("pending")}
-            className={`px-3 py-1 rounded border ${view === "pending" ? "bg-black text-white" : "bg-white"}`}
+            className={`px-3 py-1 rounded border ${
+              view === "pending" ? "bg-black text-white" : "bg-white"
+            }`}
           >
             Pendientes
           </button>
           <button
             onClick={() => setView("finished")}
-            className={`px-3 py-1 rounded border ${view === "finished" ? "bg-black text-white" : "bg-white"}`}
+            className={`px-3 py-1 rounded border ${
+              view === "finished" ? "bg-black text-white" : "bg-white"
+            }`}
           >
             Finalizados
           </button>
           <button
             onClick={() => setView("all")}
-            className={`px-3 py-1 rounded border ${view === "all" ? "bg-black text-white" : "bg-white"}`}
+            className={`px-3 py-1 rounded border ${
+              view === "all" ? "bg-black text-white" : "bg-white"
+            }`}
           >
             Todos
           </button>
@@ -310,10 +395,7 @@ export default function MatchesPage() {
           {filteredMatches.map((m) => (
             <div key={m.id} className="space-y-2">
               {/* Card clickeable para abrir modal */}
-              <div
-                onClick={() => setOpenResultMatch(m)}
-                className="cursor-pointer"
-              >
+              <div onClick={() => setOpenResultMatch(m)} className="cursor-pointer">
                 <MatchCard match={m} playersMap={{}} showActions={false} />
               </div>
 
@@ -384,8 +466,16 @@ export default function MatchesPage() {
                   {/* WINNERS */}
                   <p className="text-lg font-semibold">
                     {openResultMatch.winner === "A"
-                      ? `${openResultMatch.player_1_a?.name}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`
-                      : `${openResultMatch.player_1_b?.name}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`}
+                      ? `${openResultMatch.player_1_a?.name}${
+                          openResultMatch.player_2_a
+                            ? " / " + openResultMatch.player_2_a.name
+                            : ""
+                        }`
+                      : `${openResultMatch.player_1_b?.name}${
+                          openResultMatch.player_2_b
+                            ? " / " + openResultMatch.player_2_b.name
+                            : ""
+                        }`}
                   </p>
 
                   {/* SCORE */}
@@ -396,49 +486,109 @@ export default function MatchesPage() {
                   {/* LOSERS */}
                   <p className="text-sm text-white/70">
                     {openResultMatch.winner === "A"
-                      ? `${openResultMatch.player_1_b?.name}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`
-                      : `${openResultMatch.player_1_a?.name}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`}
+                      ? `${openResultMatch.player_1_b?.name}${
+                          openResultMatch.player_2_b
+                            ? " / " + openResultMatch.player_2_b.name
+                            : ""
+                        }`
+                      : `${openResultMatch.player_1_a?.name}${
+                          openResultMatch.player_2_a
+                            ? " / " + openResultMatch.player_2_a.name
+                            : ""
+                        }`}
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-white/60">
-                  Resultado todavía no cargado
-                </p>
+                <p className="text-sm text-white/60">Resultado todavía no cargado</p>
               )}
             </div>
 
             {/* SHARE */}
             <button
-              disabled={!isPlayed(openResultMatch)}
-              onClick={async () => {
-                if (!isPlayed(openResultMatch)) return;
-
-                const teamA = `${openResultMatch.player_1_a?.name || ""}${openResultMatch.player_2_a ? " / " + openResultMatch.player_2_a.name : ""}`.trim();
-                const teamB = `${openResultMatch.player_1_b?.name || ""}${openResultMatch.player_2_b ? " / " + openResultMatch.player_2_b.name : ""}`.trim();
-                const score = formatScoreForDisplay(openResultMatch.score);
-
-                const text = `TWINCO PADEL MANAGER\n\n${teamA}\n${score}\n${teamB}`;
-
-                try {
-                  if (navigator.share) {
-                    await navigator.share({ text });
-                    return;
-                  }
-                  await navigator.clipboard.writeText(text);
-                  toast.success("Resultado copiado");
-                } catch (err: any) {
-                  if (err?.name === "AbortError") return;
-                  toast.error("No se pudo compartir");
-                }
-              }}
+              disabled={!isPlayed(openResultMatch) || sharingResult}
+              onClick={() => handleShareResultAsImage(openResultMatch)}
               className={`w-full mt-4 py-3 rounded-xl font-semibold transition ${
                 isPlayed(openResultMatch)
                   ? "bg-green-600 hover:bg-green-700"
                   : "bg-white/10 text-white/40 cursor-not-allowed"
               }`}
             >
-              Compartir resultado
+              {sharingResult ? "Generando imagen…" : "Compartir resultado"}
             </button>
+          </div>
+
+          {/* Nodo oculto para exportar SOLO el popup como imagen */}
+          <div
+            className="fixed -left-[99999px] top-0"
+            style={{ width: 420 }}
+            aria-hidden="true"
+          >
+            <div
+              ref={exportResultRef}
+              className="bg-[#0F172A] w-[420px] rounded-3xl shadow-2xl p-7 space-y-5 text-white overflow-hidden"
+            >
+              <div className="flex flex-col items-center gap-1">
+                <img
+                  src="/logo.svg"
+                  alt="Twinco Padel Manager"
+                  className="h-8 w-auto object-contain"
+                />
+                <span className="text-xs tracking-widest text-green-400">
+                  PADEL MANAGER
+                </span>
+              </div>
+
+              <div className="text-center space-y-3 mt-2">
+                {isPlayed(openResultMatch) ? (
+                  <>
+                    <p className="text-lg font-semibold">
+                      {openResultMatch.winner === "A"
+                        ? `${openResultMatch.player_1_a?.name}${
+                            openResultMatch.player_2_a
+                              ? " / " + openResultMatch.player_2_a.name
+                              : ""
+                          }`
+                        : `${openResultMatch.player_1_b?.name}${
+                            openResultMatch.player_2_b
+                              ? " / " + openResultMatch.player_2_b.name
+                              : ""
+                          }`}
+                    </p>
+
+                    <p className="text-5xl font-extrabold my-2">
+                      {formatScoreForDisplay(openResultMatch.score)}
+                    </p>
+
+                    <p className="text-sm text-white/70">
+                      {openResultMatch.winner === "A"
+                        ? `${openResultMatch.player_1_b?.name}${
+                            openResultMatch.player_2_b
+                              ? " / " + openResultMatch.player_2_b.name
+                              : ""
+                          }`
+                        : `${openResultMatch.player_1_a?.name}${
+                            openResultMatch.player_2_a
+                              ? " / " + openResultMatch.player_2_a.name
+                              : ""
+                          }`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-white/60">
+                    Resultado todavía no cargado
+                  </p>
+                )}
+              </div>
+
+              {/* Botón incluido para que la imagen quede igual al popup */}
+              <div
+                className={`w-full mt-4 py-3 rounded-xl font-semibold text-center ${
+                  isPlayed(openResultMatch) ? "bg-green-600" : "bg-white/10 text-white/40"
+                }`}
+              >
+                Compartir resultado
+              </div>
+            </div>
           </div>
         </div>
       )}

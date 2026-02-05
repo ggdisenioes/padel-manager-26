@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
 import { supabase } from "../../../lib/supabase";
-import { getTenantId } from "../../../lib/tenant";
 import { useRole } from "../../../hooks/useRole";
 import Card from "../../../components/Card";
 
@@ -227,13 +226,6 @@ export default function GenerateMatchesPage() {
 
     setCreating(true);
 
-    const tenantId = await getTenantId();
-    if (!tenantId) {
-      toast.error("No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.");
-      setCreating(false);
-      return;
-    }
-
     // 🔎 Traer partidos existentes para evitar duplicados (por parejas)
     const { data: existingMatches, error: existingError } = await supabase
       .from("matches")
@@ -285,7 +277,6 @@ export default function GenerateMatchesPage() {
           if (matchupExists(t1, t2)) continue;
 
           newMatches.push({
-            tenant_id: tenantId,
             tournament_id: tournamentId,
             round_name: "Liga",
             player_1_a: t1.a,
@@ -320,7 +311,6 @@ export default function GenerateMatchesPage() {
             if (matchupExists(t1, t2)) continue;
 
             newMatches.push({
-              tenant_id: tenantId,
               tournament_id: tournamentId,
               round_name: groupName,
               player_1_a: t1.a,
@@ -335,7 +325,6 @@ export default function GenerateMatchesPage() {
 
             if (roundTrip) {
               newMatches.push({
-                tenant_id: tenantId,
                 tournament_id: tournamentId,
                 round_name: groupName,
                 player_1_a: t2.a,
@@ -396,7 +385,6 @@ export default function GenerateMatchesPage() {
         if (matchupExists(t1, t2)) continue;
 
         newMatches.push({
-          tenant_id: tenantId,
           tournament_id: tournamentId,
           round_name: roundName,
           player_1_a: t1.a,
@@ -429,7 +417,6 @@ export default function GenerateMatchesPage() {
 
     // 🧾 Insertar log de acción (no bloquea si falla)
     await supabase.from("action_logs").insert({
-      tenant_id: tenantId,
       action: "GENERATE_MATCHES",
       entity: "tournament",
       entity_id: tournamentId,

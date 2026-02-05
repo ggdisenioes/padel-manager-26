@@ -1218,7 +1218,7 @@ export default function DashboardPage() {
                         await navigator.share({
                           files: [file],
                           title: "Resultado del partido",
-                          text: "Resultado DEMO Padel Manager",
+                          text: "Resultado TWINCO Padel Manager",
                         });
                         toast.success("¡Imagen compartida!");
                         URL.revokeObjectURL(url);

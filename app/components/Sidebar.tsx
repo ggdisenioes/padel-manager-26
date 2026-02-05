@@ -135,7 +135,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
       {/* HEADER / LOGO */}
       <div className="px-5 py-6 border-b border-white/10 text-center">
         <h1 className="text-[26px] font-extrabold italic tracking-tight">
-          DEMO
+          TWINCO
         </h1>
         <p className="mt-1 text-[10px] font-bold tracking-[0.3em] text-[#ccff00] uppercase">
           Pádel Manager

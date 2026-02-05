@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-import { getTenantId } from "./tenant";
 
 /**
  * Tipos de acciones recomendadas (no obligatorio, pero ayuda a consistencia)
@@ -48,13 +47,8 @@ export const logAction = async ({
 
     if (!user) return;
 
-    const tenantId = await getTenantId();
-    // Si no podemos inferir tenant_id, no intentamos loguear (evita RLS 403 ruido)
-    if (!tenantId) return;
-
     await supabase.from("action_logs").insert([
       {
-        tenant_id: tenantId,
         user_id: user.id,
         user_email: user.email,
         action,

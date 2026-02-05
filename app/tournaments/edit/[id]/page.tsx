@@ -389,7 +389,7 @@ export default function EditTournament() {
             <div className="flex flex-col items-center gap-1">
               <img
                 src="/logo.svg"
-                alt="Twinco Padel Manager"
+                alt="DEMO Padel Manager"
                 className="h-8 w-auto object-contain"
               />
               <span className="text-xs tracking-widest text-green-400">
@@ -450,7 +450,7 @@ export default function EditTournament() {
                         await navigator.share({
                           files: [file],
                           title: "Resultado del partido",
-                          text: "Resultado Twinco Padel Manager",
+                          text: "Resultado DEMO Padel Manager",
                         });
                         toast.success("¡Imagen compartida!");
                         return;

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "Twinco Pádel Manager",
+  title: "TWINCO Pádel Manager",
   description: "Gestión de torneos y jugadores de pádel en tiempo real",
 };
 

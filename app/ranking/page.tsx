@@ -57,6 +57,9 @@ export default function RankingPage() {
 
     if (selectedTournament !== "all") {
       matchQuery = matchQuery.eq("tournament_id", selectedTournament);
+    } else {
+      // IMPORTANTE: el ranking es POR TORNEO. Los amistosos (tournament_id null) NO cuentan.
+      matchQuery = matchQuery.not("tournament_id", "is", null);
     }
 
     const { data: matches, error: matchError } = await matchQuery;
@@ -194,7 +197,7 @@ export default function RankingPage() {
     <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20">
       <section className="max-w-5xl mx-auto">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 dark:text-white tracking-wide">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-wide">
             Ranking de Jugadores
           </h1>
           <div className="mt-4 flex justify-center">
@@ -215,7 +218,7 @@ export default function RankingPage() {
               ))}
             </select>
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+          <p className="text-sm text-gray-600 mt-1">
             Puntos calculados automáticamente: 3 por victoria y 1 por derrota.
           </p>
         </div>
@@ -240,7 +243,7 @@ export default function RankingPage() {
                   <button
                     key={player.id}
                     onClick={() => handleRowClick(player.id)}
-                    className={`flex flex-col items-center rounded-2xl px-3 py-4 transition hover:bg-gray-100 dark:hover:bg-gray-900/60 hover:scale-[1.02] ${
+                    className={`flex flex-col items-center rounded-2xl px-3 py-4 transition hover:bg-gray-100 hover:scale-[1.02] ${
                       index === 0 ? "md:scale-105" : ""
                     }`}
                   >
@@ -269,10 +272,10 @@ export default function RankingPage() {
                       </div>
                     )}
 
-                    <span className="mt-2 text-sm font-semibold text-gray-900 dark:text-white text-center">
+                    <span className="mt-2 text-sm font-semibold text-gray-900 text-center">
                       {player.name}
                     </span>
-                    <span className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                    <span className="mt-1 text-xs text-gray-600">
                       {player.points} pts · {player.wins} victoria
                       {player.wins === 1 ? "" : "s"}
                     </span>

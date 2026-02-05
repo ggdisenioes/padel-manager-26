@@ -4,7 +4,6 @@
 
 import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { getTenantId } from '../../lib/tenant';
 import { useRouter } from 'next/navigation';
 import Card from '../../components/Card';
 import toast from 'react-hot-toast'; // Importamos toast
@@ -62,18 +61,10 @@ export default function CreatePlayer() {
     e.preventDefault();
     setLoading(true);
 
-    const tenantId = await getTenantId();
-    if (!tenantId) {
-      toast.error('No se pudo determinar tu club (tenant). Cerrá sesión y volvé a entrar.');
-      setLoading(false);
-      return;
-    }
-
     // 🔑 CLAVE: Inserción del jugador con is_approved en FALSE
     const { error } = await supabase
       .from('players')
       .insert([{
-        tenant_id: tenantId,
         ...formData,
         is_approved: false, // Explicitamos que requiere aprobación
       }]);

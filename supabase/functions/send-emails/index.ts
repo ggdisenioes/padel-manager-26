@@ -233,14 +233,14 @@ async function sendWithResend(to: string, subject: string, html: string) {
 }
 
 serve(async (req) => {
-  // Seguridad: permitir solo llamadas internas desde la DB (cron) o invocaciones autorizadas
+  // Seguridad: por defecto SOLO permite llamadas internas desde la DB (cron) con header x-internal-secret.
+  // Para pruebas manuales, seteá ALLOW_MANUAL_INVOKE=true en Secrets.
   const expected = Deno.env.get("INTERNAL_WEBHOOK_SECRET") || "";
   const provided = req.headers.get("x-internal-secret") || "";
+  const allowManual = (Deno.env.get("ALLOW_MANUAL_INVOKE") || "").toLowerCase() === "true";
 
-  // Permitimos también invocación manual desde Supabase Dashboard si querés (sin header)
-  // Seteá AL MENOS `INTERNAL_WEBHOOK_SECRET` en Secrets para activar la protección.
-  if (expected && provided !== expected) {
-    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+  if (expected && !allowManual && provided !== expected) {
+    return new Response(JSON.stringify({ ok: false, version: FUNCTION_VERSION, error: "unauthorized" }), {
       status: 401,
       headers: { "content-type": "application/json" },
     });
@@ -248,7 +248,7 @@ serve(async (req) => {
 
   // Aceptamos solo POST para evitar crawlers
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ ok: false, error: "method_not_allowed" }), {
+    return new Response(JSON.stringify({ ok: false, version: FUNCTION_VERSION, error: "method_not_allowed" }), {
       status: 405,
       headers: { "content-type": "application/json" },
     });

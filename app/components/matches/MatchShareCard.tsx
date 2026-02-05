@@ -26,7 +26,7 @@ export default function MatchShareCard({ winnerTeam, loserTeam, score }: Props) 
       <div style={{ textAlign: "center" }}>
         <img
           src="/logo.png"
-          alt="Twinco Padel Manager"
+          alt="DEMO Padel Manager"
           style={{ height: 32, width: "auto", objectFit: "contain" }}
         />
         <div

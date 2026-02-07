@@ -20,6 +20,7 @@ export default function EditMatch() {
   const [tournaments, setTournaments] = useState<any[]>([]);
   const FRIENDLY_VALUE = "__friendly__";
   const [players, setPlayers] = useState<any[]>([]);
+  const [courts, setCourts] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('details'); // Nuevo estado para pestañas
 
   const [formData, setFormData] = useState({
@@ -30,6 +31,7 @@ export default function EditMatch() {
     player_1_b: '', 
     player_2_b: '',
     place: '',
+    court_id: '',
     court: '',
     start_time: '',
     winner: 'pending',
@@ -51,9 +53,16 @@ export default function EditMatch() {
         .from('players')
         .select('id, name, level, is_approved')
         .order('name');
-      
+
+      const { data: cts } = await supabase
+        .from('courts')
+        .select('id, name, is_covered, sort_order')
+        .order('sort_order', { ascending: true })
+        .order('id', { ascending: true });
+
       if (tourns) setTournaments(tourns);
       if (plyrs) setPlayers(plyrs);
+      if (cts) setCourts(cts);
 
       // 2. Carregar Dades del Partit existent
       const { data: matchData, error: matchError } = await supabase
@@ -80,7 +89,13 @@ export default function EditMatch() {
               player_1_b: matchData.player_1_b ? String(matchData.player_1_b) : '',
               player_2_b: matchData.player_2_b ? String(matchData.player_2_b) : '',
               place: matchData.place || '',
-              court: matchData.court ? String(matchData.court) : '',
+              court_id: matchData.court_id ? String(matchData.court_id) : '',
+              court:
+                matchData.court
+                  ? String(matchData.court)
+                  : (matchData.court_id
+                      ? (cts?.find((c: any) => String(c.id) === String(matchData.court_id))?.name || '')
+                      : ''),
               // Format date/time string correctly for datetime-local input (removes timezone info)
               start_time: matchData.start_time ? matchData.start_time.substring(0, 16) : '', 
               winner: matchData.winner || 'pending',
@@ -144,8 +159,11 @@ export default function EditMatch() {
             : Number(formData.tournament_id),
         round_name:
           formData.tournament_id === FRIENDLY_VALUE ? null : (formData.round_name || null),
-        place: formData.place,
-        court: formData.court,
+        place: formData.place || null,
+        court_id: formData.court_id ? Number(formData.court_id) : null,
+        court: formData.court_id
+          ? (courts.find((c: any) => String(c.id) === String(formData.court_id))?.name || null)
+          : (formData.court || null),
         start_time: formData.start_time ? new Date(formData.start_time).toISOString() : null,
         winner: formData.winner, 
         score: formData.score || null,
@@ -191,6 +209,13 @@ export default function EditMatch() {
       </select>
     </div>
   );
+
+  useEffect(() => {
+    if (!formData.court_id) return;
+    const name = courts.find((c: any) => String(c.id) === String(formData.court_id))?.name;
+    if (!name) return;
+    setFormData((prev) => (prev.court === name ? prev : { ...prev, court: name }));
+  }, [formData.court_id, courts]);
 
   if (loading) {
     return (
@@ -292,8 +317,29 @@ export default function EditMatch() {
                                 <input type="text" placeholder="Ej: Club Padel Central" className="w-full p-2 border border-gray-300 rounded" value={formData.place} onChange={(e) => setFormData({...formData, place: e.target.value})} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Número de pista</label>
-                                <input type="text" placeholder="Ej: Pista 4" className="w-full p-2 border border-gray-300 rounded" value={formData.court} onChange={(e) => setFormData({...formData, court: e.target.value})} />
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Pista</label>
+                                {courts.length > 0 ? (
+                                  <select
+                                    className="w-full p-2 border border-gray-300 rounded"
+                                    value={formData.court_id}
+                                    onChange={(e) => setFormData({ ...formData, court_id: e.target.value })}
+                                  >
+                                    <option value="">-- Selecciona una pista --</option>
+                                    {courts.map((c: any) => (
+                                      <option key={c.id} value={String(c.id)}>
+                                        {c.name}{c.is_covered ? " · Cubierta" : " · Descubierta"}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    placeholder="Ej: Pista 4"
+                                    className="w-full p-2 border border-gray-300 rounded"
+                                    value={formData.court}
+                                    onChange={(e) => setFormData({ ...formData, court: e.target.value })}
+                                  />
+                                )}
                             </div>
                         </div>
 

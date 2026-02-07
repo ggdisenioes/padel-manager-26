@@ -47,7 +47,10 @@ export default function EditMatch() {
     const loadData = async () => {
       // 1. Carregar Tornejos i Jugadors
       const { data: tourns } = await supabase.from('tournaments').select('id, name, category').order('created_at', { ascending: false });
-      const { data: plyrs } = await supabase.from('players').select('id, name, level').eq('is_approved', true).order('name');
+      const { data: plyrs } = await supabase
+        .from('players')
+        .select('id, name, level, is_approved')
+        .order('name');
       
       if (tourns) setTournaments(tourns);
       if (plyrs) setPlayers(plyrs);
@@ -181,8 +184,9 @@ export default function EditMatch() {
       >
         <option value="">Seleccionar...</option>
         {players.map(p => (
-            // El valor ha de ser l'ID string
-            <option key={p.id} value={String(p.id)}>{p.name} (Niv {p.level})</option>
+          <option key={p.id} value={String(p.id)}>
+            {p.name} (Niv {p.level}){p.is_approved === false ? " · Pendiente" : ""}
+          </option>
         ))}
       </select>
     </div>

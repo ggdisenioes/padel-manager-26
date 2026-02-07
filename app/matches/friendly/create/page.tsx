@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "../../../lib/supabase";
@@ -9,6 +9,7 @@ import { useRole } from "../../../hooks/useRole";
 type Player = {
   id: number;
   name: string;
+  is_approved?: boolean;
 };
 
 type Court = {
@@ -18,12 +19,42 @@ type Court = {
   sort_order?: number;
 };
 
+type FriendlyMatchInsert = {
+  start_time: string;
+  duration_minutes: number;
+  is_friendly: boolean;
+  tournament_id: number | null;
+  round_name: string | null;
+  winner: string;
+  score: string | null;
+  court_id: number | null;
+  court: string | null;
+  place: string | null;
+  player_1_a: number | null;
+  player_2_a: number | null;
+  player_1_b: number | null;
+  player_2_b: number | null;
+};
+
+function shuffleCopy(ids: number[]) {
+  // Fisher–Yates (estable y sin warnings). No necesitamos semilla; la guardamos en state.
+  const arr = [...ids];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
 export default function CreateFriendlyMatchPage() {
   const router = useRouter();
   const { isAdmin, isManager, loading: roleLoading } = useRole();
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
+  const [shuffledSelected, setShuffledSelected] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [courts, setCourts] = useState<Court[]>([]);
@@ -36,122 +67,147 @@ export default function CreateFriendlyMatchPage() {
     court_id: "",
   });
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoadingCourts(true);
-
-      const { data: playersData, error: playersError } = await supabase
-        .from("players")
-        .select("id, name")
-        .eq("is_approved", true)
-        .order("name");
-
-      if (playersError) {
-        console.error(playersError);
-        toast.error("No se pudieron cargar los jugadores");
-      } else {
-        setPlayers((playersData as Player[]) || []);
-      }
-
-      const { data: courtsData, error: courtsError } = await supabase
-        .from("courts")
-        .select("id, name, is_covered, sort_order")
-        .order("sort_order", { ascending: true })
-        .order("id", { ascending: true });
-
-      if (courtsError) {
-        console.error(courtsError);
-        toast.error("No se pudieron cargar las pistas");
-        setCourts([]);
-      } else {
-        setCourts((courtsData as Court[]) || []);
-      }
-
-      setLoadingCourts(false);
-    };
-
-    loadData();
-  }, []);
-
   const canAccess = isAdmin || isManager;
   const isPageLoading = roleLoading || loadingCourts;
 
+  const isOdd = selected.length % 2 !== 0;
+  const canCreate = selected.length >= 4 && !isOdd;
+  const matchesCount = Math.floor(selected.length / 4);
+
+  const selectedCourt = useMemo(() => {
+    const id = Number(form.court_id);
+    return courts.find((c) => c.id === id);
+  }, [courts, form.court_id]);
+
+  const loadData = useCallback(async () => {
+    setLoadingCourts(true);
+
+    // Players: en esta pantalla conviene mostrar solo aprobados (consistente con el resto del producto)
+    const { data: playersData, error: playersError } = await supabase
+      .from("players")
+      .select("id, name, is_approved")
+      .eq("is_approved", true)
+      .order("name");
+
+    if (playersError) {
+      console.error(playersError);
+      toast.error("No se pudieron cargar los jugadores");
+      setPlayers([]);
+    } else {
+      setPlayers((playersData as Player[]) || []);
+    }
+
+    const { data: courtsData, error: courtsError } = await supabase
+      .from("courts")
+      .select("id, name, is_covered, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (courtsError) {
+      console.error(courtsError);
+      toast.error("No se pudieron cargar las pistas");
+      setCourts([]);
+    } else {
+      setCourts((courtsData as Court[]) || []);
+    }
+
+    setLoadingCourts(false);
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Mantener un shuffle fijo para que la vista previa coincida con lo que se crea
+  useEffect(() => {
+    if (selected.length === 0) {
+      setShuffledSelected([]);
+      return;
+    }
+    setShuffledSelected((prev) => {
+      // Si no cambió el set (mismos ids), mantenemos
+      const a = [...prev].sort((x, y) => x - y).join(",");
+      const b = [...selected].sort((x, y) => x - y).join(",");
+      if (a === b && prev.length === selected.length) return prev;
+      return shuffleCopy(selected);
+    });
+  }, [selected]);
+
   const togglePlayer = (id: number) => {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+    setSelected((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   };
 
-  const handleFormChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const handleFormChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const isOdd = selected.length % 2 !== 0;
-  const canCreate = selected.length >= 4 && !isOdd;
+  const computeAvailability = useCallback(async () => {
+    if (!form.start_time || matchesCount <= 0) {
+      setOccupiedCourtIds(new Set());
+      return;
+    }
 
-  const matchesCount = Math.floor(selected.length / 4);
+    const start = new Date(form.start_time);
+    const duration = Number(form.duration_minutes || 60);
+    const totalMinutes = matchesCount * duration;
+    const end = new Date(start.getTime() + totalMinutes * 60_000);
+
+    const dayStart = new Date(start);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const { data, error } = await supabase
+      .from("matches")
+      .select("id, court_id, start_time, duration_minutes")
+      .not("court_id", "is", null)
+      .gte("start_time", dayStart.toISOString())
+      .lt("start_time", dayEnd.toISOString());
+
+    if (error) {
+      console.error("[friendly availability]", error);
+      setOccupiedCourtIds(new Set());
+      return;
+    }
+
+    const occupied = new Set<number>();
+    (data || []).forEach((m: { court_id: number | null; start_time: string | null; duration_minutes: number | null }) => {
+      if (!m.court_id || !m.start_time || !m.duration_minutes) return;
+      const mStart = new Date(m.start_time);
+      const mEnd = new Date(mStart.getTime() + Number(m.duration_minutes) * 60_000);
+      const overlaps = mStart < end && mEnd > start;
+      if (overlaps) occupied.add(Number(m.court_id));
+    });
+
+    setOccupiedCourtIds(occupied);
+
+    if (form.court_id) {
+      const selectedId = Number(form.court_id);
+      if (occupied.has(selectedId)) {
+        setForm((prev) => ({ ...prev, court_id: "" }));
+      }
+    }
+  }, [form.court_id, form.duration_minutes, form.start_time, matchesCount]);
 
   useEffect(() => {
-    const computeAvailability = async () => {
-      if (!form.start_time || matchesCount <= 0) {
-        setOccupiedCourtIds(new Set());
-        return;
-      }
+    void computeAvailability();
+  }, [computeAvailability]);
 
-      const start = new Date(form.start_time);
-      const duration = Number(form.duration_minutes || 60);
-      const totalMinutes = matchesCount * duration;
-      const end = new Date(start.getTime() + totalMinutes * 60_000);
-
-      const dayStart = new Date(start);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-
-      const { data, error } = await supabase
-        .from("matches")
-        .select("id, court_id, start_time, duration_minutes")
-        .not("court_id", "is", null)
-        .gte("start_time", dayStart.toISOString())
-        .lt("start_time", dayEnd.toISOString());
-
-      if (error) {
-        console.error("[friendly availability]", error);
-        setOccupiedCourtIds(new Set());
-        return;
-      }
-
-      const occupied = new Set<number>();
-      (data || []).forEach((m: any) => {
-        if (!m.court_id || !m.start_time || !m.duration_minutes) return;
-        const mStart = new Date(m.start_time);
-        const mEnd = new Date(mStart.getTime() + Number(m.duration_minutes) * 60_000);
-        const overlaps = mStart < end && mEnd > start;
-        if (overlaps) occupied.add(Number(m.court_id));
-      });
-
-      setOccupiedCourtIds(occupied);
-
-      if (form.court_id) {
-        const selectedId = Number(form.court_id);
-        if (occupied.has(selectedId)) {
-          setForm((prev) => ({ ...prev, court_id: "" }));
-        }
-      }
-    };
-
-    computeAvailability();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.start_time, form.duration_minutes, matchesCount]);
+  const previewPairs = useMemo(() => {
+    if (!canCreate) return [] as number[][];
+    const base = shuffledSelected.length ? shuffledSelected : selected;
+    const out: number[][] = [];
+    for (let i = 0; i < base.length; i += 4) {
+      const g = base.slice(i, i + 4);
+      if (g.length === 4) out.push(g);
+    }
+    return out;
+  }, [canCreate, selected, shuffledSelected]);
 
   const handleCreate = async () => {
     if (!canCreate) {
-      toast.error(
-        "Para 2vs2 necesitás un número PAR de jugadores (mínimo 4)."
-      );
+      toast.error("Para 2vs2 necesitás un número PAR de jugadores (mínimo 4).");
       return;
     }
 
@@ -165,95 +221,55 @@ export default function CreateFriendlyMatchPage() {
       return;
     }
 
+    if (!selectedCourt) {
+      toast.error("La pista seleccionada no existe o no está disponible");
+      return;
+    }
+
     setLoading(true);
 
-    const shuffled = [...selected].sort(() => Math.random() - 0.5);
-
-    const inserts: any[] = [];
     const baseStart = new Date(form.start_time);
     const duration = Number(form.duration_minutes || 60);
 
-    const selectedCourt = courts.find((c) => c.id === Number(form.court_id));
+    // Usamos el shuffle estable guardado (para coincidir con la vista previa)
+    const basePlayers = shuffledSelected.length ? shuffledSelected : shuffleCopy(selected);
 
-    const isRpcMissing = (err: any) => {
-      const msg = String(err?.message || "").toLowerCase();
-      const code = String((err as any)?.code || "").toLowerCase();
-      const details = String((err as any)?.details || "").toLowerCase();
+    const inserts: FriendlyMatchInsert[] = [];
 
-      if (code.includes("pgrst") && code.includes("202")) return true;
-      if (msg.includes("could not find the function")) return true;
-      if (msg.includes("function") && msg.includes("does not exist")) return true;
-      if (details.includes("could not find the function")) return true;
-
-      return false;
-    };
-
-    let matchIndex = 0;
-
-    for (let i = 0; i < shuffled.length; i += 4) {
-      const group = shuffled.slice(i, i + 4);
+    for (let i = 0; i < basePlayers.length; i += 4) {
+      const group = basePlayers.slice(i, i + 4);
       if (group.length < 4) break;
 
+      const matchIndex = i / 4;
       const start = new Date(baseStart.getTime() + matchIndex * duration * 60_000);
 
       inserts.push({
         start_time: start.toISOString(),
-        player_1_a_id: group[0],
-        player_2_a_id: group[1],
-        player_1_b_id: group[2],
-        player_2_b_id: group[3],
+        duration_minutes: duration,
+        is_friendly: true,
+        tournament_id: null,
+        round_name: null,
+        winner: "pending",
+        score: null,
+        court_id: Number(form.court_id),
+        court: selectedCourt.name || null,
+        place: null,
+        player_1_a: group[0] ?? null,
+        player_2_a: group[1] ?? null,
+        player_1_b: group[2] ?? null,
+        player_2_b: group[3] ?? null,
       });
-
-      matchIndex += 1;
     }
 
-    for (const m of inserts) {
-      const rpc = await supabase.rpc("create_friendly_match_by_player_ids", {
-        p_start_time: m.start_time,
-        p_player_1_a_id: m.player_1_a_id,
-        p_player_2_a_id: m.player_2_a_id,
-        p_player_1_b_id: m.player_1_b_id,
-        p_player_2_b_id: m.player_2_b_id,
-        p_location_name: null,
-        p_court_name: selectedCourt?.name || null,
-      });
+    const { error: bulkErr } = await supabase.from("matches").insert(inserts);
 
-      if (rpc.error) {
-        console.error("[friendly] RPC error", rpc.error);
-
-        if (isRpcMissing(rpc.error)) {
-          // Fallback automático: insert directo (no depende de RPC ni cache)
-          const ins = await supabase.from("matches").insert({
-            start_time: m.start_time,
-            duration_minutes: duration,
-            is_friendly: true,
-            court_id: Number(form.court_id),
-            player_1_a_id: m.player_1_a_id,
-            player_2_a_id: m.player_2_a_id,
-            player_1_b_id: m.player_1_b_id,
-            player_2_b_id: m.player_2_b_id,
-            court_name: selectedCourt?.name || null,
-            location_name: null,
-          });
-
-          if (ins.error) {
-            console.error("[friendly] INSERT fallback error", ins.error);
-            const code = (ins.error as any)?.code ? ` [${(ins.error as any).code}]` : "";
-            const details = (ins.error as any)?.details ? ` · ${(ins.error as any).details}` : "";
-            toast.error(`Error al crear amistoso (fallback)${code}: ${ins.error.message}${details}`);
-            setLoading(false);
-            return;
-          }
-
-          continue;
-        }
-
-        const code = (rpc.error as any)?.code ? ` [${(rpc.error as any).code}]` : "";
-        const details = (rpc.error as any)?.details ? ` · ${(rpc.error as any).details}` : "";
-        toast.error(`Error al crear amistoso${code}: ${rpc.error.message}${details}`);
-        setLoading(false);
-        return;
-      }
+    if (bulkErr) {
+      console.error("[friendly] INSERT bulk error", bulkErr);
+      const code = (bulkErr as any)?.code ? ` [${(bulkErr as any).code}]` : "";
+      const details = (bulkErr as any)?.details ? ` · ${(bulkErr as any).details}` : "";
+      toast.error(`Error al crear amistosos${code}: ${bulkErr.message}${details}`);
+      setLoading(false);
+      return;
     }
 
     toast.success("Partidos amistosos creados");
@@ -265,16 +281,12 @@ export default function CreateFriendlyMatchPage() {
       {isPageLoading ? (
         <p className="text-gray-500">Cargando permisos…</p>
       ) : !canAccess ? (
-        <p className="text-red-600 font-semibold">
-          No tenés permisos para crear partidos amistosos.
-        </p>
+        <p className="text-red-600 font-semibold">No tenés permisos para crear partidos amistosos.</p>
       ) : (
         <>
           <header>
             <h1 className="text-2xl font-bold">Crear partido amistoso</h1>
-            <p className="text-sm text-gray-500">
-              Los partidos amistosos no pertenecen a ningún torneo.
-            </p>
+            <p className="text-sm text-gray-500">Los partidos amistosos no pertenecen a ningún torneo.</p>
           </header>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
@@ -314,7 +326,7 @@ export default function CreateFriendlyMatchPage() {
                     const labelBase = `${c.name} · ${c.is_covered ? "Cubierta" : "Descubierta"}`;
                     const label = occupied ? `${labelBase} · Ocupada` : labelBase;
                     return (
-                      <option key={c.id} value={c.id} disabled={occupied}>
+                      <option key={c.id} value={String(c.id)} disabled={occupied}>
                         {label}
                       </option>
                     );
@@ -324,16 +336,14 @@ export default function CreateFriendlyMatchPage() {
 
               {matchesCount > 1 && (
                 <p className="text-xs text-gray-600">
-                  Se van a crear <strong>{matchesCount}</strong> partidos consecutivos en la misma pista,
-                  sumando un total de <strong>{matchesCount * Number(form.duration_minutes || 60)}</strong> minutos.
+                  Se van a crear <strong>{matchesCount}</strong> partidos consecutivos en la misma pista, sumando un total de{" "}
+                  <strong>{matchesCount * Number(form.duration_minutes || 60)}</strong> minutos.
                 </p>
               )}
             </div>
 
             <div>
-              <h2 className="font-semibold mb-2">
-                Seleccioná jugadores (mínimo 4, número par)
-              </h2>
+              <h2 className="font-semibold mb-2">Seleccioná jugadores (mínimo 4, número par)</h2>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {players.map((p) => (
@@ -342,11 +352,7 @@ export default function CreateFriendlyMatchPage() {
                     type="button"
                     onClick={() => togglePlayer(p.id)}
                     className={`px-3 py-2 rounded-md border text-sm text-left transition
-                      ${
-                        selected.includes(p.id)
-                          ? "bg-green-600 text-white border-green-600"
-                          : "bg-white hover:bg-gray-50"
-                      }`}
+                      ${selected.includes(p.id) ? "bg-green-600 text-white border-green-600" : "bg-white hover:bg-gray-50"}`}
                   >
                     {p.name}
                   </button>
@@ -354,35 +360,20 @@ export default function CreateFriendlyMatchPage() {
               </div>
 
               {isOdd && (
-                <p className="mt-3 text-sm text-orange-600 font-medium">
-                  Para 2vs2 necesitás un número PAR de jugadores (se arman parejas).
-                </p>
+                <p className="mt-3 text-sm text-orange-600 font-medium">Para 2vs2 necesitás un número PAR de jugadores (se arman parejas).</p>
               )}
             </div>
 
-            {canCreate && (
+            {canCreate && previewPairs.length > 0 && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="font-semibold mb-2">Vista previa de parejas</h3>
                 <ul className="space-y-2 text-sm">
-                  {(() => {
-                    const shuffled = [...selected];
-                    const pairs = [];
-                    for (let i = 0; i < shuffled.length; i += 4) {
-                      const g = shuffled.slice(i, i + 4);
-                      if (g.length === 4) {
-                        pairs.push(g);
-                      }
-                    }
-                    return pairs.map((g, idx) => (
-                      <li key={idx}>
-                        <strong>Partido {idx + 1}:</strong>{" "}
-                        {players.find((p) => p.id === g[0])?.name} &{" "}
-                        {players.find((p) => p.id === g[1])?.name} vs{" "}
-                        {players.find((p) => p.id === g[2])?.name} &{" "}
-                        {players.find((p) => p.id === g[3])?.name}
-                      </li>
-                    ));
-                  })()}
+                  {previewPairs.map((g, idx) => (
+                    <li key={idx}>
+                      <strong>Partido {idx + 1}:</strong> {players.find((p) => p.id === g[0])?.name} & {players.find((p) => p.id === g[1])?.name} vs{" "}
+                      {players.find((p) => p.id === g[2])?.name} & {players.find((p) => p.id === g[3])?.name}
+                    </li>
+                  ))}
                 </ul>
               </div>
             )}

@@ -71,13 +71,13 @@ export default function EditMatch() {
           setFormData({
               tournament_id: matchData.tournament_id ? String(matchData.tournament_id) : FRIENDLY_VALUE,
               round_name: matchData.round_name || '',
-              // Player IDs must be strings for the select input's value prop
-              player_1_a: String(matchData.player_1_a) || '',
-              player_2_a: String(matchData.player_2_a) || '',
-              player_1_b: String(matchData.player_1_b) || '',
-              player_2_b: String(matchData.player_2_b) || '',
+              // Player IDs must be strings for the select input's value prop, and safe for null
+              player_1_a: matchData.player_1_a ? String(matchData.player_1_a) : '',
+              player_2_a: matchData.player_2_a ? String(matchData.player_2_a) : '',
+              player_1_b: matchData.player_1_b ? String(matchData.player_1_b) : '',
+              player_2_b: matchData.player_2_b ? String(matchData.player_2_b) : '',
               place: matchData.place || '',
-              court: matchData.court || '',
+              court: matchData.court ? String(matchData.court) : '',
               // Format date/time string correctly for datetime-local input (removes timezone info)
               start_time: matchData.start_time ? matchData.start_time.substring(0, 16) : '', 
               winner: matchData.winner || 'pending',
@@ -175,15 +175,14 @@ export default function EditMatch() {
     <div>
       <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">{label}</label>
       <select 
-        required
         className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
         <option value="">Seleccionar...</option>
         {players.map(p => (
-            // El valor ha de ser l'ID numèric
-            <option key={p.id} value={p.id}>{p.name} (Niv {p.level})</option>
+            // El valor ha de ser l'ID string
+            <option key={p.id} value={String(p.id)}>{p.name} (Niv {p.level})</option>
         ))}
       </select>
     </div>
@@ -249,7 +248,7 @@ export default function EditMatch() {
                                     <option value={FRIENDLY_VALUE}>Partido Amistoso</option>
                                     <option value="">-- Selecciona un torneo --</option>
                                     {tournaments.map(t => (
-                                        <option key={t.id} value={t.id}>{t.name} - {t.category}</option>
+                                        <option key={t.id} value={String(t.id)}>{t.name} - {t.category}</option>
                                     ))}
                                 </select>
                             </div>

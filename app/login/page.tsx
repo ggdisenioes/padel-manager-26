@@ -97,7 +97,7 @@ export default function LoginPage() {
 
       <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md z-10 border-t-4 border-[#ccff00]">
         <div className="text-center mb-6">
-          <h1 className="text-4xl font-extrabold text-gray-900 italic tracking-tight">DEMO</h1>
+          <h1 className="text-4xl font-extrabold text-gray-900 italic tracking-tight">TWINCO</h1>
           <span className="inline-block bg-gray-900 text-[#ccff00] px-2 py-0.5 text-xs font-bold tracking-[0.2em] uppercase rounded-sm mt-1">
             Pádel Manager
           </span>

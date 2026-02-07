@@ -3,7 +3,6 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FUNCTION_VERSION = "2026-02-05-01";
-const DEBUG_LOGS = (Deno.env.get("DEBUG_SEND_EMAILS") || "").toLowerCase() === "true";
 
 type OutboxRow = {
   id: number;
@@ -234,31 +233,14 @@ async function sendWithResend(to: string, subject: string, html: string) {
 }
 
 serve(async (req) => {
-  if (DEBUG_LOGS) {
-    console.log(
-      `[send-emails] HIT version=${FUNCTION_VERSION} method=${req.method} ts=${new Date().toISOString()} ua=${req.headers.get("user-agent") || ""}`
-    );
-  }
-
-  // Seguridad: por defecto SOLO permite llamadas internas desde la DB (cron) con header x-internal-secret.
-  // Para pruebas manuales, seteá ALLOW_MANUAL_INVOKE=true en Secrets.
+  // Seguridad: permitir solo llamadas internas desde la DB (cron) o invocaciones autorizadas
   const expected = Deno.env.get("INTERNAL_WEBHOOK_SECRET") || "";
   const provided = req.headers.get("x-internal-secret") || "";
-  const allowManual = (Deno.env.get("ALLOW_MANUAL_INVOKE") || "").toLowerCase() === "true";
 
-  if (DEBUG_LOGS) {
-    console.log(
-      `[send-emails] AUTH expected_set=${Boolean(expected)} allowManual=${allowManual} provided_len=${provided.length}`
-    );
-  }
-
-  if (expected && !allowManual && provided !== expected) {
-    if (DEBUG_LOGS) {
-      console.warn(
-        `[send-emails] UNAUTHORIZED version=${FUNCTION_VERSION} provided_len=${provided.length}`
-      );
-    }
-    return new Response(JSON.stringify({ ok: false, version: FUNCTION_VERSION, error: "unauthorized" }), {
+  // Permitimos también invocación manual desde Supabase Dashboard si querés (sin header)
+  // Seteá AL MENOS `INTERNAL_WEBHOOK_SECRET` en Secrets para activar la protección.
+  if (expected && provided !== expected) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
       status: 401,
       headers: { "content-type": "application/json" },
     });
@@ -266,10 +248,7 @@ serve(async (req) => {
 
   // Aceptamos solo POST para evitar crawlers
   if (req.method !== "POST") {
-    if (DEBUG_LOGS) {
-      console.warn(`[send-emails] METHOD_NOT_ALLOWED version=${FUNCTION_VERSION} method=${req.method}`);
-    }
-    return new Response(JSON.stringify({ ok: false, version: FUNCTION_VERSION, error: "method_not_allowed" }), {
+    return new Response(JSON.stringify({ ok: false, error: "method_not_allowed" }), {
       status: 405,
       headers: { "content-type": "application/json" },
     });
@@ -295,9 +274,6 @@ serve(async (req) => {
     if (error) throw error;
 
     const rows = (data ?? []) as OutboxRow[];
-    if (DEBUG_LOGS) {
-      console.log(`[send-emails] FETCH pending_rows=${rows.length}`);
-    }
     let sent = 0;
     let failed = 0;
 
@@ -370,12 +346,6 @@ serve(async (req) => {
       }
     }
 
-    if (DEBUG_LOGS) {
-      console.log(
-        `[send-emails] DONE processed=${rows.length} sent=${sent} failed=${failed}`
-      );
-    }
-
     return new Response(
       JSON.stringify({ ok: true, version: FUNCTION_VERSION, processed: rows.length, sent, failed }),
       {
@@ -385,9 +355,6 @@ serve(async (req) => {
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (DEBUG_LOGS) {
-      console.error(`[send-emails] ERROR version=${FUNCTION_VERSION} msg=${msg}`);
-    }
     return new Response(
       JSON.stringify({ ok: false, version: FUNCTION_VERSION, error: msg }),
       {

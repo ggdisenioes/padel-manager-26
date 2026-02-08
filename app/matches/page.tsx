@@ -173,6 +173,19 @@ export default function MatchesPage() {
     return raw.replace(/\s+/g, " ").trim();
   };
 
+  const formatLocalDate = (iso: string | null) => {
+    if (!iso) return undefined;
+    return new Date(iso).toLocaleDateString("es-ES");
+  };
+
+  const formatLocalTime = (iso: string | null) => {
+    if (!iso) return undefined;
+    return new Date(iso).toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   // 1️⃣ AGREGAR FUNCIÓN handleDeleteMatch
   const handleDeleteMatch = async (matchId: number) => {
     const confirmed = window.confirm(
@@ -363,7 +376,13 @@ export default function MatchesPage() {
                 onClick={() => setOpenResultMatch(m)}
                 className="cursor-pointer"
               >
-                <MatchCard match={m} playersMap={playersMapObj} showActions={false} />
+                <MatchCard
+                  match={m}
+                  playersMap={playersMapObj}
+                  showActions={false}
+                  date={formatLocalDate(m.start_time)}
+                  time={formatLocalTime(m.start_time)}
+                />
               </div>
 
               {/* Acciones */}

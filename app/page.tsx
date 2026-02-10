@@ -1020,7 +1020,7 @@ export default function DashboardPage() {
 
                   {isAdmin && (
                     <Link
-                      href="/admin/users/manage?crear=1"
+                      href="/admin/users?crear=1"
                       className="inline-flex items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 transition"
                     >
                       <span>👤 Crear usuario</span>
@@ -1030,7 +1030,7 @@ export default function DashboardPage() {
 
                   {isAdmin && (
                     <Link
-                      href="/admin/users/manage"
+                      href="/admin/users"
                       className="inline-flex items-center justify-between gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm hover:bg-purple-100 transition"
                     >
                       <span>🛠️ Administrar usuarios</span>

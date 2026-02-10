@@ -59,8 +59,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMobileOpen(false);
 
-    const isLogin = pathname === "/login";
-    if (isLogin) {
+    const isAuthPublic = pathname === "/login" || pathname === "/register";
+    if (isAuthPublic) {
       sessionStorage.removeItem("unauthorized_redirect");
       setCheckingSession(false);
       return;

@@ -22,6 +22,8 @@ function getLoginMessage(errorCode: string | null) {
       return "No se pudo leer tu perfil. Probá cerrar sesión e ingresar nuevamente.";
     case "tenant_invalido":
       return "Tu club no es válido. Contactá al administrador.";
+    case "aprobacion_en_curso":
+      return "Tu solicitud de acceso está en revisión. Contactá al administrador del club.";
     default:
       return null;
   }
@@ -80,7 +82,11 @@ export default function LoginPage() {
 
     if (profileError || !profile || profile.active === false) {
       await supabase.auth.signOut();
-      setErrorMsg("Usuario deshabilitado, contacte su administrador.");
+      setErrorMsg(
+        profile && profile.active === false
+          ? "Tu solicitud de acceso está en revisión. Contactá al administrador del club."
+          : "Usuario deshabilitado, contacte su administrador."
+      );
       setLoading(false);
       return;
     }
@@ -161,6 +167,16 @@ export default function LoginPage() {
           >
             {loading ? "Accediendo..." : "Iniciar Sesión"}
           </button>
+          <button
+            type="button"
+            onClick={() => router.push("/register")}
+            className="w-full bg-white text-gray-900 font-bold py-3.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition duration-200 shadow-sm"
+          >
+            Registrarme
+          </button>
+          <p className="text-xs text-gray-500 text-center">
+            Si no ves tu club en el registro, contactá al administrador.
+          </p>
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-100 text-center">

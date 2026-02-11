@@ -1,4 +1,5 @@
 // ./app/components/Sidebar.tsx
+
 "use client";
 
 import Link from "next/link";
@@ -23,6 +24,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   const pathname = usePathname();
   const { role, isAdmin, isManager } = useRole();
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -42,7 +44,6 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
           first_name: profile?.first_name ?? null,
           last_name: profile?.last_name ?? null,
         });
-        // rol manejado por useRole
       } else {
         setUser(null);
       }
@@ -99,12 +100,17 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     }
   };
 
-  const menuItems = [
+  // MENÚ GENERAL (visible para todos)
+  const generalMenuItems = [
     { id: "dashboard", label: "Panel General", href: "/", emoji: "📊" },
     { id: "tournaments", label: "Torneos", href: "/tournaments", emoji: "🏆" },
     { id: "players", label: "Jugadores", href: "/players", emoji: "👥" },
     { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾" },
     { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐" },
+  ];
+
+  // MENÚ ADMINISTRACIÓN (solo Admin/Manager)
+  const adminMenuItems = [
     { id: "courts", label: "Administrador de Pistas", href: "/courts", emoji: "🏟️" },
   ];
 
@@ -130,6 +136,37 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     return full || u.email || "";
   };
 
+  const getRoleBadge = () => {
+    if (isAdmin) return { text: "ADMIN", color: "bg-red-600" };
+    if (isManager) return { text: "MANAGER", color: "bg-blue-600" };
+    return null;
+  };
+
+  const renderMenuItem = (item: { id: string; label: string; href: string; emoji: string }) => {
+    const active =
+      (item.href === "/" && pathname === "/") ||
+      (item.href !== "/" && pathname.startsWith(item.href));
+
+    return (
+      <div key={item.id} className="relative">
+        {active && (
+          <div className="absolute left-0 top-0 h-full w-1 bg-[#ccff00]" />
+        )}
+
+        <Link
+          href={item.href}
+          onClick={(e) => handleProtectedNavigation(e, item.href)}
+          className={`relative flex items-center gap-3 px-6 py-3 text-[15px] font-medium transition
+            ${active ? "bg-white/10" : "hover:bg-white/5"}
+          `}
+        >
+          <span className="text-lg">{item.emoji}</span>
+          <span className="text-[17px] text-white">{item.label}</span>
+        </Link>
+      </div>
+    );
+  };
+
   return (
     <aside className="w-56 min-h-screen flex flex-col text-white bg-gradient-to-b from-[#0b1220] via-[#0e1626] to-[#0a1020] border-r border-white/5">
       {/* HEADER / LOGO */}
@@ -144,30 +181,36 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
 
       {/* MENÚ */}
       <nav className="flex-1 px-0 py-3">
-        {menuItems.map((item) => {
-          const active =
-            (item.href === "/" && pathname === "/") ||
-            (item.href !== "/" && pathname.startsWith(item.href));
+        {/* SECCIÓN GENERAL */}
+        <div>
+          <p className="px-6 py-2 text-xs font-semibold text-gray-400 uppercase tracking-widest">General</p>
+          {generalMenuItems.map(renderMenuItem)}
+        </div>
 
-          return (
-            <div key={item.id} className="relative">
-              {active && (
-                <div className="absolute left-0 top-0 h-full w-1 bg-[#ccff00]" />
-              )}
+        {/* SECCIÓN ADMINISTRACIÓN (solo Admin/Manager) */}
+        {(isAdmin || isManager) && (
+          <div className="mt-6 border-t border-white/10 pt-3">
+            <button
+              onClick={() => setAdminMenuOpen(!adminMenuOpen)}
+              className="w-full flex items-center justify-between px-6 py-3 text-[15px] font-medium hover:bg-white/5 transition"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-lg">🔐</span>
+                <span className="text-white">Administración</span>
+              </div>
+              <span className={`text-lg transition ${adminMenuOpen ? "rotate-180" : ""}`}>
+                ▼
+              </span>
+            </button>
 
-              <Link
-                href={item.href}
-                onClick={(e) => handleProtectedNavigation(e, item.href)}
-                className={`relative flex items-center gap-3 px-6 py-3 text-[15px] font-medium transition
-                  ${active ? "bg-white/10" : "hover:bg-white/5"}
-                `}
-              >
-                <span className="text-lg">{item.emoji}</span>
-                <span className="text-[17px] text-white">{item.label}</span>
-              </Link>
-            </div>
-          );
-        })}
+            {/* Items del menú admin colapsable */}
+            {adminMenuOpen && (
+              <div className="bg-white/5">
+                {adminMenuItems.map(renderMenuItem)}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* FOOTER USUARIO */}
@@ -175,14 +218,22 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
         {user ? (
           <>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9 rounded-full bg-gray-500 flex items-center justify-center font-bold text-sm">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-sm">
                 {getInitials(user)}
               </div>
-              <div>
-                <p className="text-sm font-semibold">
-                  {user?.first_name || user?.email}
-                </p>
-                <p className="text-xs text-gray-400">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 gap-1">
+                  <p className="text-sm font-semibold truncate">
+                    {user?.first_name || user?.email}
+                  </p>
+                  {/* BADGE DEL ROL */}
+                  {getRoleBadge() && (
+                    <span className={`${getRoleBadge()?.color} text-white text-[10px] px-2 py-0.5 rounded font-bold whitespace-nowrap`}>
+                      {getRoleBadge()?.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 truncate">
                   {user?.email}
                 </p>
               </div>

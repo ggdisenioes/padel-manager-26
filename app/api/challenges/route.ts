@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     let query = supabaseClient
       .from("challenges")
       .select(
-        "id, challenger_id, challenged_id, status, message, created_at, expires_at, match_id"
+        "id, challenger_id, challenger_partner_id, challenged_id, challenged_partner_id, status, message, created_at, expires_at, match_id"
       )
       .eq("tenant_id", profile.tenant_id)
       .order("created_at", { ascending: false });

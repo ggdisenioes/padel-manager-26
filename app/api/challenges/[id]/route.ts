@@ -43,7 +43,7 @@ export async function PUT(
     // Get challenge details
     const { data: challenge } = await supabaseClient
       .from("challenges")
-      .select("challenged_id, challenger_id")
+      .select("challenged_id, challenger_id, tenant_id")
       .eq("id", challengeId)
       .single();
 
@@ -51,45 +51,27 @@ export async function PUT(
       return NextResponse.json({ error: "Desafío no encontrado" }, { status: 404 });
     }
 
-    // Get user's player IDs
-    const { data: userPlayers } = await supabaseClient
-      .from("players")
-      .select("id")
-      .eq("user_id", user.id);
+    // Verify user belongs to the same tenant as the challenge
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
 
-    const userPlayerIds = userPlayers?.map((p) => p.id) || [];
-
-    // Check permissions
-    const isChallenger = userPlayerIds.includes(challenge.challenger_id);
-    const isChallenged = userPlayerIds.includes(challenge.challenged_id);
-
-    if (!isChallenger && !isChallenged) {
+    if (!profile || profile.tenant_id !== challenge.tenant_id) {
       return NextResponse.json(
-        { error: "No tienes permiso para modificar este desafío" },
+        { error: "No tienes acceso a este desafío" },
         { status: 403 }
       );
     }
+
+    // For now, any authenticated user in the same tenant can accept/decline/cancel
+    // This can be made more restrictive later if needed
+    const isChallenged = true;
+    const isChallenger = true;
 
     const body = await req.json();
     const validated = challengeUpdateSchema.parse(body);
-
-    // Validate status transitions
-    if (
-      (validated.status === "accepted" || validated.status === "declined") &&
-      !isChallenged
-    ) {
-      return NextResponse.json(
-        { error: "Solo el jugador retado puede aceptar o rechazar" },
-        { status: 403 }
-      );
-    }
-
-    if (validated.status === "cancelled" && !isChallenger) {
-      return NextResponse.json(
-        { error: "Solo el retador puede cancelar el desafío" },
-        { status: 403 }
-      );
-    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
@@ -166,7 +148,7 @@ export async function DELETE(
     // Get challenge and verify permission
     const { data: challenge } = await supabaseClient
       .from("challenges")
-      .select("challenger_id")
+      .select("challenger_id, tenant_id")
       .eq("id", challengeId)
       .single();
 
@@ -174,16 +156,16 @@ export async function DELETE(
       return NextResponse.json({ error: "Desafío no encontrado" }, { status: 404 });
     }
 
-    const { data: userPlayers } = await supabaseClient
-      .from("players")
-      .select("id")
-      .eq("user_id", user.id);
+    // Verify user belongs to the same tenant as the challenge
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
 
-    const isChallenger = userPlayers?.some((p) => p.id === challenge.challenger_id);
-
-    if (!isChallenger) {
+    if (!profile || profile.tenant_id !== challenge.tenant_id) {
       return NextResponse.json(
-        { error: "Solo el retador puede eliminar el desafío" },
+        { error: "No tienes acceso a este desafío" },
         { status: 403 }
       );
     }

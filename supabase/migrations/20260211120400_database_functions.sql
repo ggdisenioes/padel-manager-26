@@ -22,35 +22,24 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION notify_on_challenge_created()
 RETURNS TRIGGER AS $$
 DECLARE
-  challenged_email TEXT;
   challenged_name TEXT;
   challenger_name TEXT;
 BEGIN
-  SELECT p.email, pl.name INTO challenged_email, challenged_name
-  FROM profiles p
-  JOIN players pl ON p.id = pl.user_id
-  WHERE pl.id = NEW.challenged_id
+  -- Get the challenged player name
+  SELECT name INTO challenged_name
+  FROM players
+  WHERE id = NEW.challenged_id
   LIMIT 1;
 
+  -- Get the challenger player name
   SELECT name INTO challenger_name
   FROM players
   WHERE id = NEW.challenger_id
   LIMIT 1;
 
-  IF challenged_email IS NOT NULL THEN
-    PERFORM enqueue_notification_email(
-      challenged_email,
-      '¡Nuevo Desafío Recibido!',
-      format(
-        '<h2>¡Hola %s!</h2><p>%s te ha retado a un desafío.</p><p>Mensaje: %s</p><p><a href="https://twinco.padelx.es/challenges">Ver desafío</a></p>',
-        challenged_name,
-        challenger_name,
-        COALESCE(NEW.message, 'Sin mensaje')
-      ),
-      'challenge_received',
-      NEW.tenant_id
-    );
-  END IF;
+  -- Notification sending is now handled via Edge Function
+  -- This trigger is kept for future extensibility but doesn't send emails directly
+  -- since there's no direct user-player relationship
 
   RETURN NEW;
 END;

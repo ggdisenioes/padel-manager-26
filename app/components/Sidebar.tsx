@@ -107,12 +107,17 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     { id: "players", label: "Jugadores", href: "/players", emoji: "👥" },
     { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾" },
     { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐" },
+    { id: "news", label: "Noticias", href: "/news", emoji: "📰" },
+    { id: "challenges", label: "Desafíos", href: "/challenges", emoji: "⚔️" },
+    { id: "bookings", label: "Reservar Pista", href: "/bookings", emoji: "📅" },
   ];
 
   // MENÚ ADMINISTRACIÓN (solo Admin/Manager)
   const adminMenuItems = [
     { id: "management", label: "Gestión de Sistema", href: "/admin/management", emoji: "⚙️" },
     { id: "courts", label: "Administrador de Pistas", href: "/courts", emoji: "🏟️" },
+    { id: "news-admin", label: "Gestión de Noticias", href: "/admin/news", emoji: "📝" },
+    { id: "analytics", label: "Analytics Avanzado", href: "/admin/analytics", emoji: "📈" },
   ];
 
   const getInitials = (u: UserInfo | null): string => {

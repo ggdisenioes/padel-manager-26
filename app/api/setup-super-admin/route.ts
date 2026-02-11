@@ -49,7 +49,16 @@ export async function GET() {
       .select();
 
     if (error) {
-      return NextResponse.json({ error: 'Error actualizando perfil', details: error }, { status: 500, headers: corsHeaders });
+      console.error('Update profile error:', error);
+      return NextResponse.json({
+        error: 'Error actualizando perfil',
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        userId: superAdminUser.id,
+        email: superAdminUser.email
+      }, { status: 500, headers: corsHeaders });
     }
 
     return NextResponse.json({

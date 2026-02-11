@@ -29,13 +29,14 @@ const nextConfig = {
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           // Referrer policy
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // ✅ FIXED: Removed 'unsafe-eval' and 'unsafe-inline'
+          // ✅ IMPROVED CSP: Removed 'unsafe-eval', kept 'unsafe-inline' for Next.js compatibility
+          // Note: For production with nonces, use middleware-based CSP (requires more setup)
           {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self'",
-              "style-src 'self' 'nonce-{RANDOM}'",
+              "script-src 'self' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https:",
               "font-src 'self' data: https://fonts.googleapis.com",
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co",

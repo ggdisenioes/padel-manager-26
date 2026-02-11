@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createUserSchema } from "@/lib/validation";
+import { z } from "zod";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -29,42 +31,34 @@ export async function POST(req: Request) {
     });
 
     const body = await req.json().catch(() => ({}));
-    const email = (body?.email as string | undefined)?.trim();
-    const password = body?.password as string | undefined;
-    const role = body?.role as "user" | "manager" | undefined;
 
-    if (!email || !password || !role) {
+    // ✅ FIXED: Use Zod validation schema
+    let validatedData;
+    try {
+      validatedData = createUserSchema.parse({
+        email: body?.email,
+        password: body?.password,
+        role: body?.role,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return NextResponse.json(
+          {
+            error: "Validación fallida",
+            ...(process.env.NODE_ENV === "development"
+              ? { details: error.errors }
+              : {}),
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
-        {
-          error: "Datos incompletos",
-          ...(process.env.NODE_ENV !== "production"
-            ? {
-                debug: {
-                  hasEmail: Boolean(email),
-                  hasPassword: Boolean(password),
-                  role: role ?? null,
-                },
-              }
-            : {}),
-        },
+        { error: "Datos inválidos" },
         { status: 400 }
       );
     }
 
-    if (!email.includes("@")) {
-      return NextResponse.json({ error: "Email inválido" }, { status: 400 });
-    }
-
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: "La contraseña debe tener al menos 8 caracteres" },
-        { status: 400 }
-      );
-    }
-
-    if (!(["user", "manager"] as const).includes(role)) {
-      return NextResponse.json({ error: "Rol inválido" }, { status: 400 });
-    }
+    const { email, password, role } = validatedData;
 
     // Authorization: Bearer <token>
     const authHeader = req.headers.get("authorization") || "";

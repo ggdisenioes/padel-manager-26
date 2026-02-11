@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
+import { createBrowserClient } from '@supabase/auth-helpers-nextjs';
+import Link from 'next/link';
+
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function SuperAdminLayout({
   children,
@@ -10,85 +16,172 @@ export default function SuperAdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [isChecking, setIsChecking] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    checkAuth();
+    verifySuperAdmin();
   }, []);
 
-  const checkAuth = async () => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+  const verifySuperAdmin = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
 
-    const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
 
-    if (!user || error) {
+      if (profile?.role !== 'super_admin') {
+        router.push('/');
+        return;
+      }
+
+      setIsLoading(false);
+    } catch (error) {
       router.push('/login');
-      return;
     }
-
-    // Verificar que sea super admin
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.role !== 'super_admin') {
-      router.push('/dashboard');
-      return;
-    }
-
-    setUser(user);
-    setIsChecking(false);
   };
 
-  if (isChecking) {
-    return <div className="p-8 text-center">Verificando acceso...</div>;
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🔒</div>
+          <p className="text-gray-600">Verificando acceso...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="min-h-screen flex bg-gray-100">
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow">
-        <div className="p-6 border-b">
-          <h2 className="text-2xl font-bold text-gray-900">🚀 PadelX</h2>
-          <p className="text-sm text-gray-600 mt-1">Super Admin</p>
+      <div className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-gray-900 text-white transition-all duration-300 flex flex-col`}>
+        {/* Logo */}
+        <div className="p-6 border-b border-gray-800">
+          <Link href="/super-admin" className="text-2xl font-bold flex items-center gap-2">
+            {isSidebarOpen ? (
+              <>
+                <span>🚀</span>
+                <span>PadelX SA</span>
+              </>
+            ) : (
+              <span>🚀</span>
+            )}
+          </Link>
         </div>
 
-        <nav className="p-4 space-y-2">
-          <NavLink href="/super-admin" label="📊 Dashboard" />
-          <NavLink href="/super-admin/tenants" label="👥 Clientes" />
-          <NavLink href="/super-admin/plans" label="📋 Planes" />
-          <NavLink href="/super-admin/addons" label="➕ Add-ons" />
-          <NavLink href="/super-admin/analytics" label="📈 Analytics" />
-          <NavLink href="/super-admin/logs" label="📝 Auditoría" />
-          <NavLink href="/super-admin/settings" label="⚙️ Configuración" />
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <NavLink
+            href="/super-admin"
+            icon="📊"
+            label="Dashboard"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/tenants"
+            icon="👥"
+            label="Clientes"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/analytics"
+            icon="📈"
+            label="Analytics"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/plans"
+            icon="📋"
+            label="Planes"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/addons"
+            icon="➕"
+            label="Add-ons"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/logs"
+            icon="📝"
+            label="Auditoría"
+            isOpen={isSidebarOpen}
+          />
+          <NavLink
+            href="/super-admin/settings"
+            icon="⚙️"
+            label="Config"
+            isOpen={isSidebarOpen}
+          />
         </nav>
 
-        <div className="p-4 border-t mt-auto">
-          <p className="text-xs text-gray-600 truncate">{user?.email}</p>
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-800 space-y-2">
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="w-full p-2 hover:bg-gray-800 rounded-lg text-left text-sm"
+          >
+            {isSidebarOpen ? '◀️' : '▶️'}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full p-2 bg-red-600 hover:bg-red-700 rounded-lg text-left text-sm"
+          >
+            {isSidebarOpen ? '🚪 Logout' : '🚪'}
+          </button>
         </div>
-      </aside>
+      </div>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">{children}</div>
-      </main>
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="bg-white shadow-sm border-b">
+          <div className="px-8 py-6">
+            <h1 className="text-2xl font-bold text-gray-900">Super Admin Dashboard</h1>
+            <p className="text-sm text-gray-600">Control total de tu plataforma SaaS</p>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-8 overflow-auto">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({
+  href,
+  icon,
+  label,
+  isOpen,
+}: {
+  href: string;
+  icon: string;
+  label: string;
+  isOpen: boolean;
+}) {
   return (
-    <a
+    <Link
       href={href}
-      className="block px-4 py-2 rounded-lg hover:bg-blue-50 text-gray-700 hover:text-blue-600 transition"
+      className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800 transition text-gray-300 hover:text-white"
     >
-      {label}
-    </a>
+      <span className="text-lg">{icon}</span>
+      {isOpen && <span className="text-sm">{label}</span>}
+    </Link>
   );
 }

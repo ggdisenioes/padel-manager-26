@@ -10,7 +10,9 @@ function isPublicPath(pathname: string) {
     pathname.startsWith("/favicon") ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||
-    pathname.startsWith("/public")
+    pathname.startsWith("/public") ||
+    pathname === "/" ||
+    pathname.startsWith("/login")
   );
 }
 
@@ -20,8 +22,9 @@ export async function proxy(req: NextRequest) {
 
     if (isPublicPath(pathname)) return NextResponse.next();
 
-    // No bloquear /admin ni /api acá (evita loops y 500 en proxy)
+    // Permitir rutas protegidas (la protección se hace en el layout)
     if (pathname.startsWith("/admin")) return NextResponse.next();
+    if (pathname.startsWith("/super-admin")) return NextResponse.next();
     if (pathname.startsWith("/api/")) return NextResponse.next();
 
     return NextResponse.next();

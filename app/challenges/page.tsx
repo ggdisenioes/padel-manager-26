@@ -127,10 +127,12 @@ export default function ChallengesPage() {
         fetchChallenges();
       } else {
         const result = await response.json();
+        console.error("API error:", result);
         toast.error(result.error || "Error al crear desafío");
       }
-    } catch (error) {
-      toast.error("Error");
+    } catch (error: any) {
+      console.error("Challenge creation error:", error);
+      toast.error(error.message || "Error al crear desafío");
     }
   };
 

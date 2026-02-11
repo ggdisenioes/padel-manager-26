@@ -147,13 +147,17 @@ export default function PlayerStatsPage() {
 
         const partner = mate || "(Sin compañero)";
 
-        // oponentes (mejor: ambos nombres)
+        // oponentes (ambos nombres)
         const opp1 =
           team === "A" ? match.player_1_b?.name : match.player_1_a?.name;
         const opp2 =
           team === "A" ? match.player_2_b?.name : match.player_2_a?.name;
 
-        const opponent = [opp1, opp2].filter(Boolean).join(" / ") || "Oponente";
+        // Formato mejorado: "Miguel y Juan" en lugar de "Miguel / Juan"
+        const opponents = [opp1, opp2].filter(Boolean);
+        const opponent = opponents.length === 2
+          ? `${opponents[0]} y ${opponents[1]}`
+          : opponents[0] || "Oponente";
 
         const ts = match.start_time ? Date.parse(match.start_time) : 0;
         const dateLabel = match.start_time

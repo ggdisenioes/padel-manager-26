@@ -57,6 +57,11 @@ export default function AdminManagementPage() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Form cambiar contraseña
+  const [changingPasswordUserId, setChangingPasswordUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
   // Protección
   if (!roleLoading && !isAdmin && !isManager) {
     return (
@@ -179,6 +184,56 @@ export default function AdminManagementPage() {
       toast.error(error.message || "Error actualizando usuario");
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // Cambiar contraseña (solo admin)
+  const handleChangePassword = async (userId: string, email: string) => {
+    if (!isAdmin) {
+      toast.error("Solo admins pueden cambiar contraseñas");
+      return;
+    }
+
+    // Validar password
+    try {
+      const schema = z.object({
+        password: z.string()
+          .min(8, "Mínimo 8 caracteres")
+          .regex(/[A-Z]/, "Debe contener una mayúscula")
+          .regex(/[a-z]/, "Debe contener una minúscula")
+          .regex(/[0-9]/, "Debe contener un número")
+          .regex(/[!@#$%^&*()_+\-=\[\]{};:'",.<>?/\\|`~]/, "Debe contener un carácter especial"),
+      });
+
+      schema.parse({ password: newPassword });
+    } catch (error: any) {
+      toast.error(error.errors?.[0]?.message || "Contraseña inválida");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const response = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ user_id: userId, new_password: newPassword }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Error cambiando contraseña");
+      }
+
+      toast.success(`Contraseña de ${email} actualizada`);
+      setChangingPasswordUserId(null);
+      setNewPassword("");
+    } catch (error: any) {
+      toast.error(error.message || "Error cambiando contraseña");
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -407,6 +462,36 @@ export default function AdminManagementPage() {
                             </button>
                           </div>
                         </div>
+                      ) : changingPasswordUserId === user.id ? (
+                        // MODO CAMBIAR CONTRASEÑA (solo admin)
+                        <div className="space-y-3">
+                          <p className="text-sm font-semibold">Cambiar contraseña de {user.email}</p>
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Nueva contraseña (8+ chars, mayúscula, número, símbolo)"
+                            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleChangePassword(user.id, user.email || "usuario")}
+                              disabled={changingPassword || !newPassword}
+                              className="flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition"
+                            >
+                              {changingPassword ? "Actualizando..." : "Actualizar Contraseña"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setChangingPasswordUserId(null);
+                                setNewPassword("");
+                              }}
+                              className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         // MODO VISUALIZACIÓN
                         <div className="flex items-center justify-between">
@@ -424,7 +509,7 @@ export default function AdminManagementPage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap justify-end">
                             <button
                               onClick={() => {
                                 setEditingUserId(user.id);
@@ -439,6 +524,14 @@ export default function AdminManagementPage() {
                             >
                               Editar
                             </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => setChangingPasswordUserId(user.id)}
+                                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm"
+                              >
+                                🔑 Contraseña
+                              </button>
+                            )}
                             <button
                               onClick={() =>
                                 handleDeleteUser(user.id, user.email || "usuario")

@@ -103,6 +103,11 @@ export default function AnalyticsDashboard() {
       if (response.ok) {
         const result = await response.json();
 
+        if (!result.html) {
+          toast.error("Error: No se generó contenido HTML");
+          return;
+        }
+
         // Open in new tab for printing
         const newWindow = window.open("about:blank", "_blank");
         if (newWindow) {
@@ -113,10 +118,12 @@ export default function AnalyticsDashboard() {
 
         toast.success("PDF generado");
       } else {
-        toast.error("Error al generar PDF");
+        const errorData = await response.json();
+        toast.error(errorData.error || "Error al generar PDF");
       }
-    } catch (error) {
-      toast.error("Error");
+    } catch (error: any) {
+      console.error("Export PDF error:", error);
+      toast.error(error.message || "Error al generar PDF");
     }
   };
 

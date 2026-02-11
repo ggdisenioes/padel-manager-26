@@ -193,8 +193,8 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
           {generalMenuItems.map(renderMenuItem)}
         </div>
 
-        {/* SECCIÓN ADMINISTRACIÓN (solo Admin/Manager) */}
-        {(isAdmin || isManager) && (
+        {/* SECCIÓN ADMINISTRACIÓN (solo Admin/Manager con usuario logueado) */}
+        {user && (isAdmin || isManager) && (
           <div className="mt-6 border-t border-white/10 pt-3">
             <button
               onClick={() => setAdminMenuOpen(!adminMenuOpen)}

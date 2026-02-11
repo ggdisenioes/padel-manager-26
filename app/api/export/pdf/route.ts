@@ -200,7 +200,7 @@ export async function POST(req: Request) {
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("role")
+      .select("role, tenant_id")
       .eq("id", user.id)
       .single();
 
@@ -208,6 +208,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Solo admins/managers pueden exportar reportes" },
         { status: 403 }
+      );
+    }
+
+    if (!profile.tenant_id) {
+      return NextResponse.json(
+        { error: "Tenant no encontrado" },
+        { status: 400 }
       );
     }
 
@@ -236,10 +243,17 @@ export async function POST(req: Request) {
 
       htmlContent = generatePlayerStatsHTML(player.name, stats, []);
     } else if (validated.type === "analytics") {
-      const { data: stats } = await supabaseClient.rpc(
+      const { data: stats, error: statsError } = await supabaseClient.rpc(
         "get_platform_stats",
         { tenant_id_input: profile.tenant_id }
       );
+
+      if (statsError || !stats) {
+        return NextResponse.json(
+          { error: "Error al obtener estadísticas: " + (statsError?.message || "datos no encontrados") },
+          { status: 500 }
+        );
+      }
 
       htmlContent = generateAnalyticsHTML(stats);
     } else {

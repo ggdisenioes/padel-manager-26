@@ -111,8 +111,8 @@ export default function ChallengesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.challenger_id || !formData.challenged_id) {
-      toast.error("Selecciona al menos un jugador de cada equipo");
+    if (!formData.challenger_id || !formData.challenger_partner_id || !formData.challenged_id || !formData.challenged_partner_id) {
+      toast.error("Todos los 4 jugadores son obligatorios");
       return;
     }
 
@@ -237,29 +237,28 @@ export default function ChallengesPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
                   >
-                    <option value="">Selecciona tu perfil</option>
-                    {players
-                      .filter((p) => userPlayerIds.includes(p.id))
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
+                    <option value="">Selecciona jugador 1</option>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Jugador 2 (Pareja)</label>
+                  <label className="block text-sm font-medium mb-1">Jugador 2 (Pareja) *</label>
                   <select
                     value={formData.challenger_partner_id}
                     onChange={(e) =>
                       setFormData({ ...formData, challenger_partner_id: e.target.value })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    required
                   >
-                    <option value="">Selecciona tu pareja (opcional)</option>
+                    <option value="">Selecciona jugador 2</option>
                     {players
-                      .filter((p) => userPlayerIds.includes(p.id) && p.id !== parseInt(formData.challenger_id || "0"))
+                      .filter((p) => p.id !== parseInt(formData.challenger_id || "0"))
                       .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -283,7 +282,7 @@ export default function ChallengesPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     required
                   >
-                    <option value="">Selecciona al retado</option>
+                    <option value="">Selecciona jugador 1</option>
                     {players.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -293,15 +292,16 @@ export default function ChallengesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Jugador 2 (Pareja)</label>
+                  <label className="block text-sm font-medium mb-1">Jugador 2 (Pareja) *</label>
                   <select
                     value={formData.challenged_partner_id}
                     onChange={(e) =>
                       setFormData({ ...formData, challenged_partner_id: e.target.value })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    required
                   >
-                    <option value="">Selecciona la pareja contraria (opcional)</option>
+                    <option value="">Selecciona jugador 2</option>
                     {players
                       .filter((p) => p.id !== parseInt(formData.challenged_id || "0"))
                       .map((p) => (

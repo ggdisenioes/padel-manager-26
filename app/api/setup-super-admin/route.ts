@@ -22,7 +22,13 @@ export async function GET() {
     const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
 
     if (listError) {
-      return NextResponse.json({ error: 'Error listando usuarios', details: listError }, { status: 500, headers: corsHeaders });
+      return NextResponse.json({
+        error: 'Error listando usuarios',
+        details: listError,
+        message: listError.message,
+        status: listError.status,
+        hint: 'Verifica que SUPABASE_SERVICE_ROLE_KEY es válido para este proyecto'
+      }, { status: 500, headers: corsHeaders });
     }
 
     const superAdminUser = users.find(u => u.email === 'ggdisenioes@gmail.com');

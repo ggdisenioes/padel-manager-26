@@ -28,8 +28,6 @@ export default function ChallengesPage() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [userPlayerIds, setUserPlayerIds] = useState<number[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     challenger_id: "",
@@ -50,23 +48,7 @@ export default function ChallengesPage() {
       return;
     }
 
-    setCurrentUserId(user.id);
-
-    // Get user's players
-    const { data: userPlayers, error: userPlayersError } = await supabase
-      .from("players")
-      .select("id")
-      .eq("user_id", user.id);
-
-    if (userPlayersError) {
-      console.error("Error fetching user players:", userPlayersError);
-      toast.error("Error al cargar tus perfiles");
-    }
-
-    const playerIds = userPlayers?.map((p) => p.id) || [];
-    setUserPlayerIds(playerIds);
-
-    // Get all players for the challenged dropdown
+    // Get all approved players
     const { data: allPlayers, error: allPlayersError } = await supabase
       .from("players")
       .select("id, name")
@@ -388,9 +370,7 @@ export default function ChallengesPage() {
                   </div>
                 </div>
 
-                {challenge.status === "pending" &&
-                  (userPlayerIds.includes(challenge.challenged_id) ||
-                    (challenge.challenged_partner_id && userPlayerIds.includes(challenge.challenged_partner_id))) && (
+                {challenge.status === "pending" && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleUpdateStatus(challenge.id, "accepted")}

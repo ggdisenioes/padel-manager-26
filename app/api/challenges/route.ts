@@ -109,20 +109,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const validated = challengeSchema.parse(body);
 
-    // Verify challenger_id belongs to user
-    const { data: challengerPlayer } = await supabaseClient
-      .from("players")
-      .select("user_id")
-      .eq("id", validated.challenger_id)
-      .single();
-
-    if (!challengerPlayer || challengerPlayer.user_id !== user.id) {
-      return NextResponse.json(
-        { error: "No puedes crear un desafío en nombre de otro jugador" },
-        { status: 403 }
-      );
-    }
-
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });

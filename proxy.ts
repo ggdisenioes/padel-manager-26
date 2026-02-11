@@ -27,23 +27,16 @@ export async function proxy(req: NextRequest) {
     // Endpoints de setup (públicos para configuración inicial)
     if (pathname.startsWith("/api/setup")) return NextResponse.next();
 
-    // Si es un subdominio y no es /login, redirigir a padelx.es/login
+    // Si es un subdominio y no es /login, verificar sesión
     const isSubdomain = host.includes(".padelx.es") && !host.startsWith("padelx.es");
     if (isSubdomain && pathname !== "/login") {
-      // Intentar obtener la sesión
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!supabaseUrl || !anonKey) {
-        return NextResponse.redirect(new URL("/login", req.url));
-      }
-
       // Si no hay cookie de sesión, redirigir al login principal
-      const hasSession = req.cookies.get("sb-session") || req.cookies.get("sb-auth-token");
+      const hasSession = req.cookies.get("sb-") || req.headers.get("authorization");
       if (!hasSession) {
-        // Redirigir a padelx.es/login con returnTo
+        // Redirigir a padelx.es/login con returnTo de forma segura
+        const fullUrl = `https://${host}${pathname}${req.nextUrl.search}`;
         const loginUrl = new URL("https://padelx.es/login");
-        loginUrl.searchParams.set("returnTo", `${host}${pathname}`);
+        loginUrl.searchParams.set("returnTo", fullUrl);
         return NextResponse.redirect(loginUrl);
       }
     }

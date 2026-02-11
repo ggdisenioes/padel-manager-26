@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { useRole } from "../../hooks/useRole";
 import Link from "next/link";
@@ -16,12 +17,17 @@ type AuditLog = {
 };
 
 export default function AdminLogsPage() {
-  const { isAdmin } = useRole();
+  const router = useRouter();
+  const { isAdmin, loading: roleLoading } = useRole();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (roleLoading) return;
+    if (!isAdmin) {
+      router.push("/");
+      return;
+    }
 
     const loadLogs = async () => {
       const { data, error } = await supabase

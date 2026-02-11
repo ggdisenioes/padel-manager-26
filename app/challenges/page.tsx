@@ -49,20 +49,30 @@ export default function ChallengesPage() {
     setCurrentUserId(user.id);
 
     // Get user's players
-    const { data: userPlayers } = await supabase
+    const { data: userPlayers, error: userPlayersError } = await supabase
       .from("players")
       .select("id")
       .eq("user_id", user.id);
+
+    if (userPlayersError) {
+      console.error("Error fetching user players:", userPlayersError);
+      toast.error("Error al cargar tus perfiles");
+    }
 
     const playerIds = userPlayers?.map((p) => p.id) || [];
     setUserPlayerIds(playerIds);
 
     // Get all players for the challenged dropdown
-    const { data: allPlayers } = await supabase
+    const { data: allPlayers, error: allPlayersError } = await supabase
       .from("players")
       .select("id, name")
       .eq("is_approved", true)
       .order("name");
+
+    if (allPlayersError) {
+      console.error("Error fetching all players:", allPlayersError);
+      toast.error("Error al cargar los jugadores");
+    }
 
     setPlayers(allPlayers || []);
 

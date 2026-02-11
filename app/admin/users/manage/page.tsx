@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { useRole } from "../../../../app/hooks/useRole";
 import toast from "react-hot-toast";
@@ -16,6 +17,7 @@ type UserProfile = {
 };
 
 export default function AdminUsersManagePage() {
+  const router = useRouter();
   const { role, loading: roleLoading } = useRole();
 
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -76,9 +78,12 @@ export default function AdminUsersManagePage() {
   };
 
   useEffect(() => {
-    if (!roleLoading) {
-      loadUsers();
+    if (roleLoading) return;
+    if (role !== "admin") {
+      router.push("/");
+      return;
     }
+    loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, roleLoading]);
 

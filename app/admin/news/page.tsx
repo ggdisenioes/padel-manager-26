@@ -41,6 +41,18 @@ export default function AdminNewsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.push("/login");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile || (profile.role !== "admin" && profile.role !== "manager")) {
+      router.push("/");
+      return;
     }
   };
 

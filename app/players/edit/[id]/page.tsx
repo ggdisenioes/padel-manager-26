@@ -117,13 +117,30 @@ export default function EditPlayerPage() {
         if (isWinner) wins++;
         else losses++;
 
+        // Obtener el equipo del jugador actual
+        let partner = null;
+        if (team === "A") {
+          partner = match.player_1_a?.id === currentPlayerId
+            ? match.player_2_a?.name
+            : match.player_1_a?.name;
+        } else {
+          partner = match.player_1_b?.id === currentPlayerId
+            ? match.player_2_b?.name
+            : match.player_1_b?.name;
+        }
+
+        // Obtener ambos oponentes
         const opponentTeamLetter = team === "A" ? "B" : "A";
-        const opponentObj = match[`player_1_${opponentTeamLetter.toLowerCase()}`];
-        const opponentPlayerName = opponentObj?.name || "[Oponente Desconocido]";
+        const opp1 = match[`player_1_${opponentTeamLetter.toLowerCase()}`]?.name;
+        const opp2 = match[`player_2_${opponentTeamLetter.toLowerCase()}`]?.name;
+        const opponents = [opp1, opp2].filter(Boolean);
+        const opponentText = opponents.length === 2
+          ? `${opponents[0]} y ${opponents[1]}`
+          : opponents[0] || "[Oponentes Desconocidos]";
 
         history.push({
           id: match.id ?? 0,
-          opponent: `vs ${opponentPlayerName}`,
+          opponent: `Con ${partner || "(Sin compañero)"} vs ${opponentText}`,
           result: isWinner ? "Victoria" : "Derrota",
           score: match.score || "N/A",
           date: match.start_time ? new Date(match.start_time).toLocaleDateString() : "-",

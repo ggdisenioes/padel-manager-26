@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET() {
   try {
     const supabase = createClient(
@@ -12,13 +22,13 @@ export async function GET() {
     const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
 
     if (listError) {
-      return NextResponse.json({ error: 'Error listando usuarios', details: listError }, { status: 500 });
+      return NextResponse.json({ error: 'Error listando usuarios', details: listError }, { status: 500, headers: corsHeaders });
     }
 
     const superAdminUser = users.find(u => u.email === 'ggdisenioes@gmail.com');
 
     if (!superAdminUser) {
-      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
+      return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404, headers: corsHeaders });
     }
 
     // Actualizar el perfil
@@ -29,7 +39,7 @@ export async function GET() {
       .select();
 
     if (error) {
-      return NextResponse.json({ error: 'Error actualizando perfil', details: error }, { status: 500 });
+      return NextResponse.json({ error: 'Error actualizando perfil', details: error }, { status: 500, headers: corsHeaders });
     }
 
     return NextResponse.json({
@@ -38,9 +48,9 @@ export async function GET() {
       userId: superAdminUser.id,
       email: superAdminUser.email,
       updatedProfile: data,
-    });
+    }, { headers: corsHeaders });
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500, headers: corsHeaders });
   }
 }

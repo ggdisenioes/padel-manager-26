@@ -37,7 +37,7 @@ export default function SuperAdminLayout({
         .eq('id', session.user.id)
         .single();
 
-      if (profile?.role !== 'super_admin') {
+      if (profile?.role !== 'admin') {
         router.push('/');
         return;
       }

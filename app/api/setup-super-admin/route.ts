@@ -37,11 +37,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404, headers: corsHeaders });
     }
 
-    // Actualizar el perfil - activar usuario y asignar rol
+    // Actualizar el perfil - activar usuario y asignar rol admin
     const { data, error } = await supabase
       .from('profiles')
       .update({
-        role: 'super_admin',
+        role: 'admin',
         active: true,
         approval_status: 'approved'
       })

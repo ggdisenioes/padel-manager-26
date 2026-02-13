@@ -17,7 +17,7 @@ function isPublicPath(pathname: string) {
   );
 }
 
-export async function proxy(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   try {
     const pathname = req.nextUrl.pathname;
     const host = req.headers.get("host") || "";

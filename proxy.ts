@@ -12,7 +12,8 @@ function isPublicPath(pathname: string) {
     pathname === "/sitemap.xml" ||
     pathname.startsWith("/public") ||
     pathname === "/" ||
-    pathname.startsWith("/login")
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/dashboard")
   );
 }
 

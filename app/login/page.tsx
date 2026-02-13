@@ -91,7 +91,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push(profile?.role === "admin" || profile?.role === "super_admin" ? "/super-admin" : "/");
+    router.push(profile?.role === "super_admin" ? "/super-admin" : "/");
     router.refresh();
   };
 

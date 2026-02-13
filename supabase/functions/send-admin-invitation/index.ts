@@ -118,6 +118,31 @@ serve(async (req) => {
       throw new Error(`Resend error ${resendRes.status}: ${txt}`);
     }
 
+    // 9. Encolar WhatsApp si el tenant tiene teléfono (admin_phone)
+    try {
+      const { data: tenantData } = await adminClient
+        .from("tenants")
+        .select("phone")
+        .eq("id", tenant_id)
+        .single();
+
+      if (tenantData?.phone) {
+        await adminClient.from("whatsapp_queue").insert({
+          tenant_id,
+          to_phone: tenantData.phone,
+          template_name: "admin_invitation",
+          template_params: JSON.stringify([
+            first_name ?? "Administrador",
+            invite.tenant_name,
+            inviteUrl,
+          ]),
+        });
+      }
+    } catch (waErr) {
+      // No bloquear si falla el encolado de WhatsApp
+      console.warn("WhatsApp enqueue failed (non-blocking):", waErr);
+    }
+
     return jsonResponse({
       ok: true,
       invitation_id: invite.invitation_id,

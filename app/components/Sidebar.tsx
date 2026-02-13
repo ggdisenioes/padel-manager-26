@@ -7,6 +7,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
+import { useTenantPlan } from "../hooks/useTenantPlan";
 import toast from "react-hot-toast";
 
 type SidebarProps = {
@@ -23,6 +24,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { role, isAdmin, isManager } = useRole();
+  const { hasFeature, loading: planLoading } = useTenantPlan();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
@@ -100,13 +102,13 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     }
   };
 
-  // MENÚ GENERAL (visible para todos)
+  // MENÚ GENERAL (visible para todos, algunos gated por plan)
   const generalMenuItems = [
     { id: "dashboard", label: "Panel General", href: "/", emoji: "📊" },
     { id: "tournaments", label: "Torneos", href: "/tournaments", emoji: "🏆" },
     { id: "players", label: "Jugadores", href: "/players", emoji: "👥" },
-    { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾" },
-    { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐" },
+    { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾", requiredFeature: "has_live_scoring" },
+    { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐", requiredFeature: "has_advanced_rankings" },
     { id: "news", label: "Noticias", href: "/news", emoji: "📰" },
     { id: "challenges", label: "Desafíos", href: "/challenges", emoji: "⚔️" },
     { id: "bookings", label: "Reservar Pista", href: "/bookings", emoji: "📅" },
@@ -117,7 +119,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     { id: "management", label: "Gestión de Sistema", href: "/admin/management", emoji: "⚙️" },
     { id: "courts", label: "Administrador de Pistas", href: "/courts", emoji: "🏟️" },
     { id: "news-admin", label: "Gestión de Noticias", href: "/admin/news", emoji: "📝" },
-    { id: "analytics", label: "Analytics Avanzado", href: "/admin/analytics", emoji: "📈" },
+    { id: "analytics", label: "Analytics Avanzado", href: "/admin/analytics", emoji: "📈", requiredFeature: "has_player_stats" },
   ];
 
   const getInitials = (u: UserInfo | null): string => {
@@ -148,7 +150,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     return null;
   };
 
-  const renderMenuItem = (item: { id: string; label: string; href: string; emoji: string }) => {
+  const renderMenuItem = (item: { id: string; label: string; href: string; emoji: string; requiredFeature?: string }) => {
     const active =
       (item.href === "/" && pathname === "/") ||
       (item.href !== "/" && pathname.startsWith(item.href));
@@ -190,7 +192,9 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
         {/* SECCIÓN GENERAL */}
         <div>
           <p className="px-6 py-2 text-xs font-semibold text-gray-400 uppercase tracking-widest">General</p>
-          {generalMenuItems.map(renderMenuItem)}
+          {generalMenuItems
+            .filter(item => !item.requiredFeature || hasFeature(item.requiredFeature))
+            .map(renderMenuItem)}
         </div>
 
         {/* SECCIÓN ADMINISTRACIÓN (solo Admin/Manager con usuario logueado) */}
@@ -212,7 +216,9 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
             {/* Items del menú admin colapsable */}
             {adminMenuOpen && (
               <div className="bg-white/5">
-                {adminMenuItems.map(renderMenuItem)}
+                {adminMenuItems
+                  .filter(item => !item.requiredFeature || hasFeature(item.requiredFeature))
+                  .map(renderMenuItem)}
               </div>
             )}
           </div>

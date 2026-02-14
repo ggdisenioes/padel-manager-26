@@ -29,6 +29,9 @@ type MatchHistoryItem = {
 type PlayerForm = {
   name: string;
   email: string;
+  phone: string;
+  notify_email: boolean;
+  notify_whatsapp: boolean;
   level: number;
   avatar_url: string;
   is_approved: boolean;
@@ -39,6 +42,9 @@ type PlayerForm = {
 type OriginalComparable = {
   name: string;
   email: string;
+  phone: string;
+  notify_email: boolean;
+  notify_whatsapp: boolean;
   level: number;
   avatar_url: string;
   is_approved: boolean;
@@ -60,6 +66,9 @@ export default function EditPlayerPage() {
   const [formData, setFormData] = useState<PlayerForm>({
     name: "",
     email: "",
+    phone: "",
+    notify_email: true,
+    notify_whatsapp: false,
     level: 4.0,
     avatar_url: "",
     is_approved: false,
@@ -78,6 +87,9 @@ export default function EditPlayerPage() {
     const current: OriginalComparable = {
       name: formData.name,
       email: formData.email,
+      phone: formData.phone,
+      notify_email: formData.notify_email,
+      notify_whatsapp: formData.notify_whatsapp,
       level: formData.level,
       avatar_url: formData.avatar_url,
       is_approved: formData.is_approved,
@@ -214,6 +226,9 @@ export default function EditPlayerPage() {
       const nextForm: PlayerForm = {
         name: playerData?.name || "",
         email: playerData?.email || "",
+        phone: playerData?.phone || "",
+        notify_email: playerData?.notify_email ?? true,
+        notify_whatsapp: playerData?.notify_whatsapp ?? false,
         level: typeof playerData?.level === "number" ? playerData.level : 4.0,
         avatar_url: playerData?.avatar_url || "",
         is_approved: !!playerData?.is_approved,
@@ -225,6 +240,9 @@ export default function EditPlayerPage() {
       setOriginalData({
         name: nextForm.name,
         email: nextForm.email,
+        phone: nextForm.phone,
+        notify_email: nextForm.notify_email,
+        notify_whatsapp: nextForm.notify_whatsapp,
         level: nextForm.level,
         avatar_url: nextForm.avatar_url,
         is_approved: nextForm.is_approved,
@@ -275,6 +293,9 @@ export default function EditPlayerPage() {
     const updateData = {
       name: formData.name,
       email: formData.email,
+      phone: formData.phone || null,
+      notify_email: formData.notify_email,
+      notify_whatsapp: formData.notify_whatsapp,
       level: formData.level,
       avatar_url: formData.avatar_url,
       is_approved: formData.is_approved,
@@ -380,6 +401,46 @@ export default function EditPlayerPage() {
                   value={formData.email}
                   onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                 />
+              </div>
+
+              {/* WhatsApp */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp (Opcional)</label>
+                <input
+                  type="tel"
+                  className="w-full p-2 border border-gray-300 rounded outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ej: +34612345678"
+                  value={formData.phone}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+              </div>
+
+              {/* Preferencias de Notificación */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Notificaciones</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.notify_email}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, notify_email: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Recibir notificaciones por Email</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.notify_whatsapp}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, notify_whatsapp: e.target.checked }))}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700">Recibir notificaciones por WhatsApp</span>
+                  </label>
+                </div>
+                {formData.notify_whatsapp && !formData.phone && (
+                  <p className="text-xs text-amber-600 mt-1">Ingresá un número de WhatsApp para recibir notificaciones.</p>
+                )}
               </div>
 
               {/* Nivel */}

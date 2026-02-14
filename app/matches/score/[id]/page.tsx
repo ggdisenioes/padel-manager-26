@@ -277,8 +277,8 @@ export default function ScoreEntryPage() {
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600">
-                <div>📅 {new Date(matchData.start_time).toLocaleDateString('es-ES')}</div>
-                <div>⏰ {new Date(matchData.start_time).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
+                <div>📅 {new Date(matchData.start_time).toLocaleDateString('es-ES', { timeZone: 'Europe/Madrid' })}</div>
+                <div>⏰ {new Date(matchData.start_time).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })}</div>
               </div>
             </div>
 

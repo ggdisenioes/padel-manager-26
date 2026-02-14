@@ -687,6 +687,7 @@ export default function DashboardPage() {
                             ? new Date(upcomingMatches[0].start_time).toLocaleTimeString("es-ES", {
                                 hour: "2-digit",
                                 minute: "2-digit",
+                                timeZone: "Europe/Madrid",
                               })
                             : "—"}
                         </p>
@@ -1084,7 +1085,7 @@ export default function DashboardPage() {
                             )}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {new Date(log.created_at).toLocaleString("es-ES")}
+                            {new Date(log.created_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}
                           </p>
                         </div>
                       </div>

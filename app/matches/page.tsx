@@ -183,6 +183,7 @@ export default function MatchesPage() {
     return new Date(iso).toLocaleTimeString("es-ES", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "Europe/Madrid",
     });
   };
 

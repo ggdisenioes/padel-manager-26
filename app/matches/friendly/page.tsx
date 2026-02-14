@@ -92,7 +92,7 @@ export default function FriendlyMatchesPage() {
                 </p>
 
                 <p className="text-sm text-gray-500">
-                  {new Date(match.start_time).toLocaleString('es-ES')}
+                  {new Date(match.start_time).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}
                   {match.place && ` · ${match.place}`}
                   {match.court && ` · Pista ${match.court}`}
                 </p>

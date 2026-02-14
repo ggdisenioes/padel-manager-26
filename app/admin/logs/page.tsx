@@ -111,7 +111,7 @@ export default function AdminLogsPage() {
                 </p>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  {new Date(log.created_at).toLocaleString("es-ES")}
+                  {new Date(log.created_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}
                 </p>
 
                 {log.metadata && (

@@ -104,13 +104,14 @@ export default function MatchCard(props: MatchCardProps) {
   const startDate = toDateFromSupabase(match?.start_time);
 
   const displayDate = startDate
-    ? startDate.toLocaleDateString("es-ES")
+    ? startDate.toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" })
     : date || undefined;
 
   const displayTime = startDate
     ? startDate.toLocaleTimeString("es-ES", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "Europe/Madrid",
       })
     : time || undefined;
 

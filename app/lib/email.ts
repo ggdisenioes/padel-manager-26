@@ -219,7 +219,7 @@ export async function sendMatchProposalNotification(opts: {
         ${court ? `<tr><td>Pista</td><td>${court}</td></tr>` : ""}
       </table>
       <p>Por favor, revisá la propuesta y creá el partido desde el panel de administración.</p>
-      <a class="btn" href="https://twinco.padelx.es/matches/create/manual">Crear Partido</a>`
+      <a class="btn" href="https://twinco.padelx.es/matches/friendly/create">Crear Partido Amistoso</a>`
     );
 
     await sendEmail(admin.email, subject, body);

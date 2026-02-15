@@ -247,16 +247,22 @@ export async function PUT(
           .eq("id", challenge.tenant_id)
           .single();
 
-        // Get admin/manager emails for this tenant
-        const { data: admins } = await supabaseAdmin
+        // Get admin/manager emails for this tenant + super_admins
+        const { data: tenantAdmins } = await supabaseAdmin
           .from("profiles")
-          .select("email, full_name")
+          .select("email, first_name")
           .eq("tenant_id", challenge.tenant_id)
           .in("role", ["admin", "manager"]);
 
-        const adminEmails = (admins || [])
+        const { data: superAdmins } = await supabaseAdmin
+          .from("profiles")
+          .select("email, first_name")
+          .eq("role", "super_admin");
+
+        const allAdmins = [...(tenantAdmins || []), ...(superAdmins || [])];
+        const adminEmails = allAdmins
           .filter((a: any) => a.email)
-          .map((a: any) => ({ name: a.full_name || "Admin", email: a.email }));
+          .map((a: any) => ({ name: a.first_name || "Admin", email: a.email }));
 
         if (adminEmails.length > 0) {
           await sendMatchProposalNotification({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { sendChallengeNotification } from "@/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -11,7 +12,7 @@ const challengeSchema = z.object({
   challenged_id: z.number().int().positive(),
   challenger_partner_id: z.number().int().positive().optional().nullable(),
   challenged_partner_id: z.number().int().positive().optional().nullable(),
-  message: z.string().max(500).optional(),
+  message: z.string().max(500).optional().nullable(),
 });
 
 const challengeUpdateSchema = z.object({
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
     let query = supabaseClient
       .from("challenges")
       .select(
-        "id, challenger_id, challenger_partner_id, challenged_id, challenged_partner_id, status, message, created_at, expires_at, match_id"
+        "id, challenger_id, challenger_partner_id, challenged_id, challenged_partner_id, status, message, created_at, expires_at, match_id, challenged_accepted, challenged_partner_accepted, scheduled_date, scheduled_court, scheduled_place"
       )
       .eq("tenant_id", profile.tenant_id)
       .order("created_at", { ascending: false });
@@ -147,6 +148,52 @@ export async function POST(req: Request) {
       });
     } catch {
       // Silent fail
+    }
+
+    // Send email notifications (non-blocking)
+    try {
+      const playerIds = [
+        validated.challenger_id,
+        validated.challenged_id,
+        validated.challenger_partner_id,
+        validated.challenged_partner_id,
+      ].filter((id): id is number => id != null);
+
+      const { data: players } = await supabaseAdmin
+        .from("players")
+        .select("id, name, email, notify_email")
+        .in("id", playerIds);
+
+      if (players) {
+        const getPlayer = (id: number | null | undefined) =>
+          players.find((p: any) => p.id === id);
+
+        const challenger = getPlayer(validated.challenger_id);
+        const challengerPartner = getPlayer(validated.challenger_partner_id);
+        const challenged = getPlayer(validated.challenged_id);
+        const challengedPartner = getPlayer(validated.challenged_partner_id);
+
+        const { data: tenant } = await supabaseAdmin
+          .from("tenants")
+          .select("name")
+          .eq("id", profile.tenant_id)
+          .single();
+
+        await sendChallengeNotification({
+          challengerName: challenger?.name || "Un jugador",
+          challengerEmail: challenger?.notify_email !== false ? challenger?.email : null,
+          challengerPartnerName: challengerPartner?.name,
+          challengerPartnerEmail: challengerPartner?.notify_email !== false ? challengerPartner?.email : null,
+          challengedName: challenged?.name || "Jugador",
+          challengedEmail: challenged?.notify_email !== false ? challenged?.email : null,
+          challengedPartnerName: challengedPartner?.name,
+          challengedPartnerEmail: challengedPartner?.notify_email !== false ? challengedPartner?.email : null,
+          message: validated.message,
+          clubName: tenant?.name || "TWINCO",
+        });
+      }
+    } catch (notifError) {
+      console.error("Notification error (non-blocking):", notifError);
     }
 
     return NextResponse.json({ success: true, challenge }, { status: 201 });

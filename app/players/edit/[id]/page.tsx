@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 
 import Card from "../../../components/Card";
 import { logAction } from "../../../lib/audit";
+import { formatDateMadrid } from "@/lib/dates";
 import { isAdminSession } from "../../../lib/admin";
 // ⚠️ Supabase client está en /lib/supabase.ts (raíz del proyecto)
 import { supabase } from "../../../lib/supabase";
@@ -155,7 +156,7 @@ export default function EditPlayerPage() {
           opponent: `Con ${partner || "(Sin compañero)"} vs ${opponentText}`,
           result: isWinner ? "Victoria" : "Derrota",
           score: match.score || "N/A",
-          date: match.start_time ? new Date(match.start_time).toLocaleDateString() : "-",
+          date: match.start_time ? formatDateMadrid(match.start_time) : "-",
         });
       }
     }

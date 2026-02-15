@@ -10,6 +10,7 @@ import { useRole } from "@/hooks/useRole";
 import MatchCard from "@/components/matches/MatchCard";
 import toast from "react-hot-toast";
 import MatchShareCard from "./components/matches/MatchShareCard";
+import { formatTimeMadrid, formatDateTimeMadrid } from "@/lib/dates";
 
 type PlayerMap = {
   [key: number]: string;
@@ -683,13 +684,7 @@ export default function DashboardPage() {
                       <div>
                         <p className="text-xs text-gray-500">Próximo</p>
                         <p className="text-2xl font-extrabold text-gray-900">
-                          {upcomingMatches[0]?.start_time
-                            ? new Date(upcomingMatches[0].start_time).toLocaleTimeString("es-ES", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                timeZone: "Europe/Madrid",
-                              })
-                            : "—"}
+                          {formatTimeMadrid(upcomingMatches[0]?.start_time)}
                         </p>
                         <p className="text-[11px] text-gray-500 mt-1">Hora del partido</p>
                       </div>
@@ -1021,7 +1016,7 @@ export default function DashboardPage() {
 
                   {isAdmin && (
                     <Link
-                      href="/admin/users?crear=1"
+                      href="/admin/management"
                       className="inline-flex items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 transition"
                     >
                       <span>👤 Crear usuario</span>
@@ -1085,7 +1080,7 @@ export default function DashboardPage() {
                             )}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {new Date(log.created_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}
+                            {formatDateTimeMadrid(log.created_at)}
                           </p>
                         </div>
                       </div>

@@ -107,16 +107,17 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     { id: "dashboard", label: "Panel General", href: "/", emoji: "📊" },
     { id: "tournaments", label: "Torneos", href: "/tournaments", emoji: "🏆" },
     { id: "players", label: "Jugadores", href: "/players", emoji: "👥" },
-    { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾", requiredFeature: "has_live_scoring" },
+    { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾" },
     { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐", requiredFeature: "has_advanced_rankings" },
     { id: "news", label: "Noticias", href: "/news", emoji: "📰" },
     { id: "challenges", label: "Desafíos", href: "/challenges", emoji: "⚔️" },
     { id: "bookings", label: "Reservar Pista", href: "/bookings", emoji: "📅" },
+    { id: "mi-cuenta", label: "Mi Cuenta", href: "/mi-cuenta", emoji: "👤" },
   ];
 
   // MENÚ ADMINISTRACIÓN (solo Admin/Manager)
   const adminMenuItems = [
-    { id: "management", label: "Gestión de Sistema", href: "/admin/management", emoji: "⚙️" },
+    { id: "management", label: "Gestión de Usuarios", href: "/admin/management", emoji: "⚙️" },
     { id: "courts", label: "Administrador de Pistas", href: "/courts", emoji: "🏟️" },
     { id: "news-admin", label: "Gestión de Noticias", href: "/admin/news", emoji: "📝" },
     { id: "analytics", label: "Analytics Avanzado", href: "/admin/analytics", emoji: "📈", requiredFeature: "has_player_stats" },

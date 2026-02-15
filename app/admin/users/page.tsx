@@ -19,6 +19,12 @@ type ProfileRow = {
   created_at: string | null;
 };
 
+type PlayerOption = {
+  id: number;
+  name: string;
+  user_id: string | null;
+};
+
 type TabKey = "pending" | "approved" | "rejected" | "deleted" | "all";
 
 function displayName(u: ProfileRow) {
@@ -27,14 +33,9 @@ function displayName(u: ProfileRow) {
 }
 
 function statusFromRow(u: ProfileRow): "pending" | "approved" | "rejected" | "deleted" {
-  // 1) Si está marcado como eliminado (soft delete), prima sobre todo.
   if (u.deleted_at) return "deleted";
-
-  // 2) Si hay approval_status válido, úsalo.
   const s = (u.approval_status ?? "").toString().toLowerCase();
   if (s === "pending" || s === "approved" || s === "rejected") return s;
-
-  // 3) Fallback legacy por active
   return u.active ? "approved" : "pending";
 }
 
@@ -45,11 +46,28 @@ export default function AdminUsersPage() {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [rows, setRows] = useState<ProfileRow[]>([]);
   const [tab, setTab] = useState<TabKey>("pending");
+  const [players, setPlayers] = useState<PlayerOption[]>([]);
 
   const filtered = useMemo(() => {
     if (tab === "all") return rows;
     return rows.filter((r) => statusFromRow(r) === tab);
   }, [rows, tab]);
+
+  // Mapa: userId → playerId vinculado
+  const userPlayerMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    players.forEach((p) => {
+      if (p.user_id) map[p.user_id] = p.id;
+    });
+    return map;
+  }, [players]);
+
+  // Mapa: playerId → nombre
+  const playerNameMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    players.forEach((p) => { map[p.id] = p.name; });
+    return map;
+  }, [players]);
 
   const load = async () => {
     setLoading(true);
@@ -68,7 +86,6 @@ export default function AdminUsersPage() {
 
     setMeId(user.id);
 
-    // Leer mi perfil desde profiles (RLS: select own permitido)
     const { data: me, error: meErr } = await supabase
       .from("profiles")
       .select("id, tenant_id, role, active, approval_status")
@@ -104,21 +121,30 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,email,role,tenant_id,active,approval_status,deleted_at,first_name,last_name,created_at")
-      .eq("tenant_id", me.tenant_id)
-      .order("created_at", { ascending: false });
+    // Cargar usuarios y jugadores en paralelo
+    const [usersRes, playersRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id,email,role,tenant_id,active,approval_status,deleted_at,first_name,last_name,created_at")
+        .eq("tenant_id", me.tenant_id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("players")
+        .select("id, name, user_id")
+        .eq("tenant_id", me.tenant_id)
+        .order("name", { ascending: true }),
+    ]);
 
-    if (error) {
-      console.error(error);
+    if (usersRes.error) {
+      console.error(usersRes.error);
       toast.error("No se pudieron cargar los usuarios.");
       setRows([]);
       setLoading(false);
       return;
     }
 
-    setRows((data as ProfileRow[]) || []);
+    setRows((usersRes.data as ProfileRow[]) || []);
+    setPlayers((playersRes.data as PlayerOption[]) || []);
     setLoading(false);
   };
 
@@ -145,7 +171,6 @@ export default function AdminUsersPage() {
   };
 
   const softDelete = async (userId: string) => {
-    // “Eliminar” = baja lógica (reversible)
     const { error } = await supabase
       .from("profiles")
       .update({ active: false, deleted_at: new Date().toISOString() })
@@ -162,7 +187,6 @@ export default function AdminUsersPage() {
   };
 
   const setActive = async (userId: string, active: boolean) => {
-    // No borrar: solo deshabilitar/habilitar
     const patch: Partial<ProfileRow> = active
       ? ({ active: true, deleted_at: null, approval_status: "approved" } as any)
       : ({ active: false } as any);
@@ -180,7 +204,6 @@ export default function AdminUsersPage() {
   };
 
   const changeRole = async (userId: string, newRole: "user" | "manager") => {
-    // Seguridad: nunca permitir setear admin desde UI
     const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
     if (error) {
       console.error(error);
@@ -188,6 +211,39 @@ export default function AdminUsersPage() {
       return;
     }
     toast.success("Rol actualizado.");
+    void load();
+  };
+
+  const linkPlayer = async (userId: string, playerId: number | null) => {
+    // 1. Desvincular el jugador anterior de este usuario (si existe)
+    const { error: unlinkErr } = await supabase
+      .from("players")
+      .update({ user_id: null })
+      .eq("user_id", userId);
+
+    if (unlinkErr) {
+      console.error("[admin/users] unlink error", unlinkErr);
+      toast.error("Error al desvincular el jugador anterior.");
+      return;
+    }
+
+    // 2. Si se seleccionó un jugador, vincularlo
+    if (playerId) {
+      const { error: linkErr } = await supabase
+        .from("players")
+        .update({ user_id: userId })
+        .eq("id", playerId);
+
+      if (linkErr) {
+        console.error("[admin/users] link error", linkErr);
+        toast.error("Error al vincular el jugador.");
+        return;
+      }
+      toast.success("Jugador vinculado correctamente.");
+    } else {
+      toast.success("Jugador desvinculado.");
+    }
+
     void load();
   };
 
@@ -214,7 +270,7 @@ export default function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-bold">Gestión de usuarios</h1>
           <p className="text-sm text-gray-600">
-            Administrá usuarios del club (aprobar/rechazar, habilitar/deshabilitar, rol).
+            Administrá usuarios del club (aprobar/rechazar, habilitar/deshabilitar, rol, vincular jugador).
           </p>
         </div>
         <button
@@ -249,10 +305,11 @@ export default function AdminUsersPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="grid grid-cols-12 px-4 py-3 text-xs font-bold text-gray-500 uppercase bg-gray-50 border-b border-gray-100">
-          <div className="col-span-4">Usuario</div>
-          <div className="col-span-3">Email</div>
-          <div className="col-span-2">Rol</div>
+          <div className="col-span-3">Usuario</div>
+          <div className="col-span-2">Email</div>
+          <div className="col-span-1">Rol</div>
           <div className="col-span-1">Estado</div>
+          <div className="col-span-3">Jugador vinculado</div>
           <div className="col-span-2 text-right">Acciones</div>
         </div>
 
@@ -263,14 +320,20 @@ export default function AdminUsersPage() {
             const status = statusFromRow(u);
             const isMe = meId === u.id;
             const isAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
+            const linkedPlayerId = userPlayerMap[u.id] ?? null;
+
+            // Jugadores disponibles: sin vincular + el actual
+            const availablePlayers = players.filter(
+              (p) => p.user_id === null || p.user_id === u.id
+            );
 
             return (
               <div
                 key={u.id}
                 className="grid grid-cols-12 px-4 py-4 border-b border-gray-100 items-center gap-2"
               >
-                <div className="col-span-4">
-                  <p className="font-semibold text-gray-900 flex items-center gap-2">
+                <div className="col-span-3">
+                  <p className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
                     {displayName(u)}
                     {isMe && (
                       <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-700">
@@ -282,19 +345,18 @@ export default function AdminUsersPage() {
                         Admin
                       </span>
                     )}
-                {u.active === false && (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-red-100 text-red-700">
-                    {u.deleted_at ? "Eliminado" : "Deshabilitado"}
-                  </span>
-                )}
+                    {u.active === false && (
+                      <span className="text-[10px] px-2 py-1 rounded-full bg-red-100 text-red-700">
+                        {u.deleted_at ? "Eliminado" : "Deshabilitado"}
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-gray-500 truncate">{u.id}</p>
                 </div>
 
-                <div className="col-span-3 text-sm text-gray-700 truncate">{u.email ?? "—"}</div>
+                <div className="col-span-2 text-sm text-gray-700 truncate">{u.email ?? "—"}</div>
 
-                <div className="col-span-2">
-                  {/* Nunca permitir setear admin desde UI */}
+                <div className="col-span-1">
                   {isAdmin ? (
                     <span className="text-sm text-gray-700">admin</span>
                   ) : (
@@ -304,7 +366,7 @@ export default function AdminUsersPage() {
                         const v = e.target.value;
                         if (v === "manager" || v === "user") void changeRole(u.id, v);
                       }}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
                     >
                       <option value="user">user</option>
                       <option value="manager">manager</option>
@@ -334,7 +396,32 @@ export default function AdminUsersPage() {
                   </span>
                 </div>
 
-                <div className="col-span-2 flex justify-end gap-2">
+                {/* Columna: Vincular Jugador */}
+                <div className="col-span-3">
+                  {status === "approved" || status === "pending" ? (
+                    <select
+                      value={linkedPlayerId ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        void linkPlayer(u.id, val ? Number(val) : null);
+                      }}
+                      className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+                    >
+                      <option value="">Sin vincular</option>
+                      {availablePlayers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : linkedPlayerId ? (
+                    <span className="text-sm text-gray-600">{playerNameMap[linkedPlayerId]}</span>
+                  ) : (
+                    <span className="text-sm text-gray-400">—</span>
+                  )}
+                </div>
+
+                <div className="col-span-2 flex justify-end gap-2 flex-wrap">
                   {status === "pending" && (
                     <>
                       <button
@@ -387,7 +474,6 @@ export default function AdminUsersPage() {
                         </button>
                       )}
 
-                      {/* Eliminar (baja lógica) para no ensuciar: manda al tab Eliminados */}
                       {!u.deleted_at && u.active !== false && (
                         <button
                           onClick={() => softDelete(u.id)}
@@ -423,7 +509,7 @@ export default function AdminUsersPage() {
       </div>
 
       <p className="text-xs text-gray-500">
-        Nota: “Eliminar” es una baja lógica (reversible). El usuario pasa a la pestaña “Eliminados” y puede ser rehabilitado.
+        Nota: "Eliminar" es una baja lógica (reversible). El usuario pasa a la pestaña "Eliminados" y puede ser rehabilitado.
       </p>
     </main>
   );

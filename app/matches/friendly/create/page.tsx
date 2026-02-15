@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "../../../lib/supabase";
 import { useRole } from "../../../hooks/useRole";
+import { notifyMatchCreated } from "../../../lib/notify";
 
 type Player = {
   id: number;
@@ -214,7 +215,7 @@ export default function CreateFriendlyMatchPage() {
         });
       }
 
-      const { error: bulkErr } = await supabase.from("matches").insert(inserts);
+      const { data: created, error: bulkErr } = await supabase.from("matches").insert(inserts).select("id");
 
       if (bulkErr) {
         console.error("[friendly] INSERT bulk error", bulkErr);
@@ -226,6 +227,7 @@ export default function CreateFriendlyMatchPage() {
       }
 
       toast.success("Partidos amistosos creados");
+      if (created) notifyMatchCreated(created.map((m: any) => m.id));
       router.push("/matches");
     } catch (e: any) {
       console.error(e);

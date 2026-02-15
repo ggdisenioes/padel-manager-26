@@ -49,6 +49,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [checkingSession, setCheckingSession] = useState(true);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+
+  const isAuthPage = pathname === "/login" || pathname === "/register";
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
@@ -94,7 +97,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     checkSession();
   }, [pathname, router]);
 
-  // 2) Mejora PRO: toast + limpieza de URL para errores “soft”
+  // 2) Sidebar slide-in transition after login
+  useEffect(() => {
+    if (!checkingSession && !isAuthPage) {
+      // Small delay to trigger CSS transition
+      const timer = setTimeout(() => setSidebarVisible(true), 50);
+      return () => clearTimeout(timer);
+    } else {
+      setSidebarVisible(false);
+    }
+  }, [checkingSession, isAuthPage]);
+
+  // 3) Mejora PRO: toast + limpieza de URL para errores "soft"
   useEffect(() => {
     const error = searchParams.get("error");
     const tenant = searchParams.get("tenant");
@@ -124,13 +138,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (checkingSession) return null;
 
+  // Auth pages: render clean, no sidebar
+  if (isAuthPage) {
+    return (
+      <>
+        <Toaster position="top-right" />
+        {children}
+      </>
+    );
+  }
+
   return (
     <>
       <Toaster position="top-right" />
 
       <div className="min-h-screen flex bg-[#05070b]">
-        {/* SIDEBAR DESKTOP */}
-        <div className="hidden md:flex">
+        {/* SIDEBAR DESKTOP — slide-in from left */}
+        <div
+          className="hidden md:flex transition-transform duration-500 ease-out"
+          style={{ transform: sidebarVisible ? "translateX(0)" : "translateX(-100%)" }}
+        >
           <Sidebar />
         </div>
 
@@ -183,11 +210,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex-1 bg-gray-50">{children}</div>
         </div>
 
-        {/* OVERLAY MOBILE */}
+        {/* OVERLAY MOBILE — slide-in transition */}
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
-            <div className="absolute inset-y-0 left-0 w-64 max-w-[80%]">
+            <div className="absolute inset-y-0 left-0 w-64 max-w-[80%] animate-slide-in-left">
               <Sidebar onLinkClick={() => setMobileOpen(false)} />
             </div>
           </div>

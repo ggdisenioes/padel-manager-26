@@ -11,7 +11,7 @@ export async function notifyMatchCreated(matchIds: number[]) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    await fetch("/api/notifications", {
+    const res = await fetch("/api/notifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -22,6 +22,13 @@ export async function notifyMatchCreated(matchIds: number[]) {
         match_ids: matchIds,
       }),
     });
+
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`[notify] API returned ${res.status}:`, result);
+    } else {
+      console.log("[notify] Notifications sent:", result);
+    }
   } catch (err) {
     console.error("[notify] Failed to send match notifications:", err);
   }

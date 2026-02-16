@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendMatchNotification } from "@/lib/email";
@@ -110,9 +112,37 @@ export async function POST(req: Request) {
       const matchPlayerIds = [match.player_1_a, match.player_2_a, match.player_1_b, match.player_2_b]
         .filter((id): id is number => id != null);
 
+      // Log all players and their notification flags for debugging
+      const matchPlayers = players.filter((p: any) => matchPlayerIds.includes(p.id));
+      console.log(
+        `[notifications] Match ${match.id}: All players in match:`,
+        matchPlayers.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email || "(vacío)",
+          notify_email: p.notify_email,
+        }))
+      );
+
+      const skipped = matchPlayers.filter(
+        (p: any) => p.notify_email === false || !p.email
+      );
+      if (skipped.length > 0) {
+        console.warn(
+          `[notifications] Match ${match.id}: Skipped players:`,
+          skipped.map((p: any) => ({ id: p.id, name: p.name, reason: !p.email ? "sin email" : "notify_email=false" }))
+        );
+      }
+
+      // Send to ALL eligible players (one email per player, even if same email address)
       const playerEmails = players
         .filter((p: any) => matchPlayerIds.includes(p.id) && p.notify_email !== false && p.email)
-        .map((p: any) => ({ name: p.name, email: p.email }));
+        .map((p: any) => ({ name: p.name, email: p.email as string }));
+
+      console.log(
+        `[notifications] Match ${match.id}: Sending ${playerEmails.length} emails:`,
+        playerEmails.map((p) => `${p.name} <${p.email}>`)
+      );
 
       if (playerEmails.length > 0) {
         await sendMatchNotification({

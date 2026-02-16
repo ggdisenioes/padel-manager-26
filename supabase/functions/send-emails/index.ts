@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FUNCTION_VERSION = "2026-02-05-01";
+const FUNCTION_VERSION = "2026-02-13-01";
 const DEBUG_LOGS = (Deno.env.get("DEBUG_SEND_EMAILS") || "").toLowerCase() === "true";
 
 type OutboxRow = {
@@ -306,18 +306,68 @@ serve(async (req) => {
         const payload = row.payload ?? {};
         const start_time: string | undefined = payload.start_time;
 
-        // Texto “dónde”
-        const whereText =
+        // Texto "dónde"
+        let whereText =
           [payload.location, payload.court].filter(Boolean).join(" · ") ||
           payload.where ||
           "";
 
-        // Texto “con quién”
-        // Si no viene armado, igual lo mostramos con IDs (mejorable luego).
-        const teamsText =
-          payload.teamsText ||
-          payload.teams ||
-          "Partido programado";
+        // Texto "con quién" — siempre buscar nombres reales desde la DB
+        let teamsText = "Partido programado";
+
+        if (row.match_id) {
+          // Fetch match data with player names from DB
+          const { data: match } = await supabase
+            .from("matches")
+            .select("player_1_a, player_2_a, player_1_b, player_2_b, court, place, court_id")
+            .eq("id", row.match_id)
+            .single();
+
+          if (match) {
+            const playerIds = [match.player_1_a, match.player_2_a, match.player_1_b, match.player_2_b]
+              .filter((id: number | null): id is number => id != null);
+
+            if (playerIds.length > 0) {
+              const { data: players } = await supabase
+                .from("players")
+                .select("id, name")
+                .in("id", playerIds);
+
+              const getName = (id: number | null) =>
+                players?.find((p: any) => p.id === id)?.name || "—";
+
+              const teamA = `${getName(match.player_1_a)} y ${getName(match.player_2_a)}`;
+              const teamB = `${getName(match.player_1_b)} y ${getName(match.player_2_b)}`;
+              teamsText = `${teamA} vs ${teamB}`;
+            }
+
+            // Also use match court/place if whereText is empty
+            if (!whereText) {
+              const parts: string[] = [];
+              if (match.court) parts.push(match.court);
+              if (match.place) parts.push(match.place);
+              if (parts.length > 0) whereText = parts.join(" · ");
+
+              // Try court name from courts table if court_id exists
+              if (!whereText && match.court_id) {
+                const { data: court } = await supabase
+                  .from("courts")
+                  .select("name")
+                  .eq("id", match.court_id)
+                  .single();
+                if (court?.name) whereText = court.name;
+              }
+            }
+          }
+        }
+
+        // Fallback to payload if DB lookup didn't produce results
+        if (teamsText === "Partido programado") {
+          teamsText =
+            payload.teamsText ||
+            payload.teams ||
+            "Partido programado";
+        }
 
         const ctaUrl = `${appUrl}/matches`;
 

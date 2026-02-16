@@ -68,7 +68,7 @@ export async function sendEmail(to: string, subject: string, htmlBody: string) {
   }
 
   try {
-    const { error } = await getResend().emails.send({
+    const { data, error } = await getResend().emails.send({
       from: FROM_EMAIL,
       to,
       subject,
@@ -76,10 +76,12 @@ export async function sendEmail(to: string, subject: string, htmlBody: string) {
     });
 
     if (error) {
-      console.error("[email] Resend error:", error);
+      console.error(`[email] Resend error sending to ${to}:`, error);
+    } else {
+      console.log(`[email] Sent to ${to} (id: ${data?.id})`);
     }
   } catch (err) {
-    console.error("[email] Failed to send email:", err);
+    console.error(`[email] Failed to send to ${to}:`, err);
   }
 }
 

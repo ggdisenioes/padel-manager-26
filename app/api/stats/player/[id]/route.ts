@@ -28,14 +28,35 @@ export async function GET(
       global: { headers: { Authorization: req.headers.get("authorization") || "" } },
     });
 
-    // Get player basic info
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    // Verify user's tenant
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 });
+    }
+
+    // Get player basic info with tenant verification
     const { data: player, error: playerErr } = await supabaseClient
       .from("players")
-      .select("id, name, level, avatar_url")
+      .select("id, name, level, avatar_url, tenant_id")
       .eq("id", playerId)
       .single();
 
     if (playerErr || !player) {
+      return NextResponse.json({ error: "Jugador no encontrado" }, { status: 404 });
+    }
+
+    if (player.tenant_id !== profile.tenant_id) {
       return NextResponse.json({ error: "Jugador no encontrado" }, { status: 404 });
     }
 

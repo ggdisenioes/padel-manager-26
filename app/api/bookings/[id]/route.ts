@@ -41,10 +41,25 @@ export async function PUT(
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    // Check if user owns the booking or is admin
-    const { data: booking } = await supabaseClient
+    // Get user's profile (tenant + role)
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("role, tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    // Check booking exists and belongs to same tenant
+    const { data: booking } = await supabaseAdmin
       .from("bookings")
-      .select("user_id")
+      .select("user_id, tenant_id")
       .eq("id", bookingId)
       .single();
 
@@ -52,15 +67,13 @@ export async function PUT(
       return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
     }
 
-    const { data: profile } = await supabaseClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    if (booking.tenant_id !== profile.tenant_id) {
+      return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
+    }
 
     const canUpdate =
       booking.user_id === user.id ||
-      (profile && (profile.role === "admin" || profile.role === "manager"));
+      profile.role === "admin" || profile.role === "manager";
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -71,10 +84,6 @@ export async function PUT(
 
     const body = await req.json();
     const validated = bookingUpdateSchema.parse(body);
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
 
     const { data: updatedBooking, error } = await supabaseAdmin
       .from("bookings")
@@ -144,9 +153,25 @@ export async function DELETE(
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
-    const { data: booking } = await supabaseClient
+    // Get user's profile (tenant + role)
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("role, tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    // Check booking exists and belongs to same tenant
+    const { data: booking } = await supabaseAdmin
       .from("bookings")
-      .select("user_id")
+      .select("user_id, tenant_id")
       .eq("id", bookingId)
       .single();
 
@@ -154,15 +179,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
     }
 
-    const { data: profile } = await supabaseClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    if (booking.tenant_id !== profile.tenant_id) {
+      return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
+    }
 
     const canDelete =
       booking.user_id === user.id ||
-      (profile && (profile.role === "admin" || profile.role === "manager"));
+      profile.role === "admin" || profile.role === "manager";
 
     if (!canDelete) {
       return NextResponse.json(
@@ -170,10 +193,6 @@ export async function DELETE(
         { status: 403 }
       );
     }
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
 
     // Set status to cancelled instead of hard delete
     const { error } = await supabaseAdmin

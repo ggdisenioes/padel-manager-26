@@ -60,10 +60,24 @@ export default function AdminUsersManagePage() {
     setError(null);
 
     try {
-      const { data, error } = await supabase
+      // Get current user's tenant to filter users
+      const { data: myProfile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", authData?.user?.id ?? "")
+        .single();
+
+      let query = supabase
         .from("profiles")
         .select("id,email,role,active,created_at,first_name,last_name")
         .order("created_at", { ascending: false });
+
+      // Filter by tenant (only show same-tenant users)
+      if (myProfile?.tenant_id) {
+        query = query.eq("tenant_id", myProfile.tenant_id);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error("loadUsers error", error);

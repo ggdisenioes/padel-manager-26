@@ -114,6 +114,20 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
+    // Validate challenger_id belongs to the authenticated user
+    const { data: challengerPlayer } = await supabaseAdmin
+      .from("players")
+      .select("id, user_id")
+      .eq("id", validated.challenger_id)
+      .single();
+
+    if (!challengerPlayer || challengerPlayer.user_id !== user.id) {
+      return NextResponse.json(
+        { error: "No puedes crear un desafío en nombre de otro jugador" },
+        { status: 403 }
+      );
+    }
+
     const { data: challenge, error } = await supabaseAdmin
       .from("challenges")
       .insert({

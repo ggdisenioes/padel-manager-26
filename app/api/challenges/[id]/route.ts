@@ -96,6 +96,20 @@ export async function PUT(
         );
       }
 
+      // Validate the authenticated user owns this player_id
+      const { data: respondingPlayer } = await supabaseAdmin
+        .from("players")
+        .select("id, user_id")
+        .eq("id", validated.player_id)
+        .single();
+
+      if (!respondingPlayer || respondingPlayer.user_id !== user.id) {
+        return NextResponse.json(
+          { error: "No puedes responder en nombre de otro jugador" },
+          { status: 403 }
+        );
+      }
+
       // Determine which field to update
       let updateField: string;
       if (validated.player_id === challenge.challenged_id) {

@@ -12,7 +12,9 @@ export default function AuthBridge() {
     const establishSession = async () => {
       const accessToken = searchParams.get('access_token');
       const refreshToken = searchParams.get('refresh_token');
-      const redirectTo = searchParams.get('redirect') || '/super-admin';
+      const rawRedirect = searchParams.get('redirect') || '/super-admin';
+      // Only allow relative paths to prevent open redirect attacks
+      const redirectTo = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/super-admin';
 
       if (!accessToken || !refreshToken) {
         router.push('/login');

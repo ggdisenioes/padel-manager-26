@@ -7,6 +7,15 @@ function getResend() {
 }
 const FROM_EMAIL = process.env.EMAIL_FROM || "PadelX <noreply@padelx.es>";
 
+function esc(str: string | null | undefined): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function baseLayout(title: string, bodyHtml: string) {
   return `<!doctype html>
 <html lang="es">
@@ -98,13 +107,20 @@ export async function sendChallengeNotification(opts: {
     clubName = "TWINCO",
   } = opts;
 
-  const retadores = challengerPartnerName
-    ? `${challengerName} y ${challengerPartnerName}`
-    : challengerName;
+  const safeChallenger = esc(challengerName);
+  const safePartner = esc(challengerPartnerName);
+  const safeChallenged = esc(challengedName);
+  const safeChallengedPartner = esc(challengedPartnerName);
+  const safeClub = esc(clubName);
+  const safeMessage = esc(message);
 
-  const retados = challengedPartnerName
-    ? `${challengedName} y ${challengedPartnerName}`
-    : challengedName;
+  const retadores = safePartner
+    ? `${safeChallenger} y ${safePartner}`
+    : safeChallenger;
+
+  const retados = safeChallengedPartner
+    ? `${safeChallenged} y ${safeChallengedPartner}`
+    : safeChallenged;
 
   // Email al retador principal (confirmación)
   if (challengerEmail) {
@@ -112,8 +128,8 @@ export async function sendChallengeNotification(opts: {
     const body = baseLayout(
       subjectChallenger,
       `<h2>¡Desafío Enviado!</h2>
-      <p>Hola <strong>${challengerName}</strong>, tu desafío a <strong>${retados}</strong> ha sido enviado en <strong>${clubName}</strong>.</p>
-      ${message ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${message}"</em></p>` : ""}
+      <p>Hola <strong>${safeChallenger}</strong>, tu desafío a <strong>${retados}</strong> ha sido enviado en <strong>${safeClub}</strong>.</p>
+      ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
       <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
     );
     await sendEmail(challengerEmail, subjectChallenger, body);
@@ -121,12 +137,12 @@ export async function sendChallengeNotification(opts: {
 
   // Email al compañero del retador
   if (challengerPartnerEmail) {
-    const subjectPartner = `${challengerName} ha enviado un desafío a ${retados}`;
+    const subjectPartner = `${safeChallenger} ha enviado un desafío a ${retados}`;
     const body = baseLayout(
       subjectPartner,
       `<h2>¡Desafío Enviado!</h2>
-      <p>Hola, <strong>${challengerName}</strong> te ha incluido en un desafío contra <strong>${retados}</strong> en <strong>${clubName}</strong>.</p>
-      ${message ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${message}"</em></p>` : ""}
+      <p>Hola, <strong>${safeChallenger}</strong> te ha incluido en un desafío contra <strong>${retados}</strong> en <strong>${safeClub}</strong>.</p>
+      ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
       <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
     );
     await sendEmail(challengerPartnerEmail, subjectPartner, body);
@@ -134,14 +150,14 @@ export async function sendChallengeNotification(opts: {
 
   // Email al desafiado principal
   if (challengedEmail) {
-    const subjectChallenged = `${retadores} te ${challengerPartnerName ? "han" : "ha"} retado`;
+    const subjectChallenged = `${retadores} te ${safePartner ? "han" : "ha"} retado`;
     const body = baseLayout(
       subjectChallenged,
       `<h2>¡Te han retado!</h2>
-      <p>Hola <strong>${challengedName}</strong>!</p>
-      <p><strong>${retadores}</strong> te ${challengerPartnerName ? "han" : "ha"} retado${challengedPartnerName ? ` junto con <strong>${challengedPartnerName}</strong>` : ""} en <strong>${clubName}</strong>.</p>
+      <p>Hola <strong>${safeChallenged}</strong>!</p>
+      <p><strong>${retadores}</strong> te ${safePartner ? "han" : "ha"} retado${safeChallengedPartner ? ` junto con <strong>${safeChallengedPartner}</strong>` : ""} en <strong>${safeClub}</strong>.</p>
       <p style="font-size:16px;font-weight:700;color:#0f172a;">¿Aceptás el desafío?</p>
-      ${message ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${message}"</em></p>` : ""}
+      ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
       <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
     );
     await sendEmail(challengedEmail, subjectChallenged, body);
@@ -149,14 +165,14 @@ export async function sendChallengeNotification(opts: {
 
   // Email al compañero del desafiado
   if (challengedPartnerEmail && challengedPartnerName) {
-    const subjectPartner = `${retadores} te ${challengerPartnerName ? "han" : "ha"} retado`;
+    const subjectPartner = `${retadores} te ${safePartner ? "han" : "ha"} retado`;
     const body = baseLayout(
       subjectPartner,
       `<h2>¡Te han retado!</h2>
-      <p>Hola <strong>${challengedPartnerName}</strong>!</p>
-      <p><strong>${retadores}</strong> te ${challengerPartnerName ? "han" : "ha"} retado junto con <strong>${challengedName}</strong> en <strong>${clubName}</strong>.</p>
+      <p>Hola <strong>${safeChallengedPartner}</strong>!</p>
+      <p><strong>${retadores}</strong> te ${safePartner ? "han" : "ha"} retado junto con <strong>${safeChallenged}</strong> en <strong>${safeClub}</strong>.</p>
       <p style="font-size:16px;font-weight:700;color:#0f172a;">¿Aceptás el desafío?</p>
-      ${message ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${message}"</em></p>` : ""}
+      ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
       <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
     );
     await sendEmail(challengedPartnerEmail, subjectPartner, body);
@@ -173,20 +189,26 @@ export async function sendMatchNotification(opts: {
 }) {
   const { playerEmails, teamA, teamB, matchDate, court, clubName = "TWINCO" } = opts;
 
-  const subject = `Nuevo partido programado en ${clubName}`;
+  const safeClub = esc(clubName);
+  const safeTeamA = esc(teamA);
+  const safeTeamB = esc(teamB);
+  const safeDate = esc(matchDate);
+  const safeCourt = esc(court);
+  const subject = `Nuevo partido programado en ${safeClub}`;
 
   for (const player of playerEmails) {
     if (!player.email) continue;
 
+    const safeName = esc(player.name);
     const body = baseLayout(
       subject,
       `<h2>¡Nuevo Partido!</h2>
-      <p>Hola <strong>${player.name}</strong>, tenés un nuevo partido programado.</p>
+      <p>Hola <strong>${safeName}</strong>, tenés un nuevo partido programado.</p>
       <table class="info-table">
-        <tr><td>Equipo A</td><td>${teamA}</td></tr>
-        <tr><td>Equipo B</td><td>${teamB}</td></tr>
-        <tr><td>Fecha</td><td>${matchDate}</td></tr>
-        ${court ? `<tr><td>Pista</td><td>${court}</td></tr>` : ""}
+        <tr><td>Equipo A</td><td>${safeTeamA}</td></tr>
+        <tr><td>Equipo B</td><td>${safeTeamB}</td></tr>
+        <tr><td>Fecha</td><td>${safeDate}</td></tr>
+        ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
       </table>
       <a class="btn" href="https://twinco.padelx.es/matches">Ver partido</a>`
     );
@@ -205,18 +227,24 @@ export async function sendMatchProposalNotification(opts: {
 }) {
   const { adminEmails, teamA, teamB, matchDate, court, clubName = "TWINCO" } = opts;
 
-  const subject = `Propuesta de partido amistoso en ${clubName}`;
+  const safeClub = esc(clubName);
+  const safeTeamA = esc(teamA);
+  const safeTeamB = esc(teamB);
+  const safeDate = esc(matchDate);
+  const safeCourt = esc(court);
+  const subject = `Propuesta de partido amistoso en ${safeClub}`;
 
   for (const admin of adminEmails) {
+    const safeName = esc(admin.name);
     const body = baseLayout(
       subject,
       `<h2>Propuesta de Partido Amistoso</h2>
-      <p>Hola <strong>${admin.name}</strong>, los jugadores de un desafío aceptado han propuesto un partido amistoso.</p>
+      <p>Hola <strong>${safeName}</strong>, los jugadores de un desafío aceptado han propuesto un partido amistoso.</p>
       <table class="info-table">
-        <tr><td>Equipo A</td><td>${teamA}</td></tr>
-        <tr><td>Equipo B</td><td>${teamB}</td></tr>
-        <tr><td>Fecha</td><td>${matchDate}</td></tr>
-        ${court ? `<tr><td>Pista</td><td>${court}</td></tr>` : ""}
+        <tr><td>Equipo A</td><td>${safeTeamA}</td></tr>
+        <tr><td>Equipo B</td><td>${safeTeamB}</td></tr>
+        <tr><td>Fecha</td><td>${safeDate}</td></tr>
+        ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
       </table>
       <p>Por favor, revisá la propuesta y creá el partido desde el panel de administración.</p>
       <a class="btn" href="https://twinco.padelx.es/matches/friendly/create">Crear Partido Amistoso</a>`

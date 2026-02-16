@@ -523,7 +523,7 @@ export default function MatchesPage() {
                       {courtPlace && <span>{courtPlace}</span>}
                     </div>
                     <div style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "#334155" }}>
-                      twinco.padelx.es
+                      {process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "") || "padelx.es"}
                     </div>
                   </div>
                 </div>

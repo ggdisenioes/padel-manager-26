@@ -108,12 +108,17 @@ export default function AnalyticsDashboard() {
           return;
         }
 
-        // Open in new tab for printing
-        const newWindow = window.open("about:blank", "_blank");
+        // Open in new tab for printing using Blob URL (avoids unsafe document.write)
+        const blob = new Blob([result.html], { type: "text/html; charset=utf-8" });
+        const blobUrl = URL.createObjectURL(blob);
+        const newWindow = window.open(blobUrl, "_blank");
         if (newWindow) {
-          newWindow.document.write(result.html);
-          newWindow.document.close();
-          setTimeout(() => newWindow.print(), 500);
+          setTimeout(() => {
+            newWindow.print();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+          }, 500);
+        } else {
+          URL.revokeObjectURL(blobUrl);
         }
 
         toast.success("PDF generado");

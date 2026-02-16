@@ -6,6 +6,7 @@ function getResend() {
   return _resend;
 }
 const FROM_EMAIL = process.env.EMAIL_FROM || "PadelX <noreply@padelx.es>";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://twinco.padelx.es";
 
 function esc(str: string | null | undefined): string {
   if (!str) return "";
@@ -130,7 +131,7 @@ export async function sendChallengeNotification(opts: {
       `<h2>¡Desafío Enviado!</h2>
       <p>Hola <strong>${safeChallenger}</strong>, tu desafío a <strong>${retados}</strong> ha sido enviado en <strong>${safeClub}</strong>.</p>
       ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
-      <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
+      <a class="btn" href="${APP_URL}/challenges">Ver desafío</a>`
     );
     await sendEmail(challengerEmail, subjectChallenger, body);
   }
@@ -143,7 +144,7 @@ export async function sendChallengeNotification(opts: {
       `<h2>¡Desafío Enviado!</h2>
       <p>Hola, <strong>${safeChallenger}</strong> te ha incluido en un desafío contra <strong>${retados}</strong> en <strong>${safeClub}</strong>.</p>
       ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
-      <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
+      <a class="btn" href="${APP_URL}/challenges">Ver desafío</a>`
     );
     await sendEmail(challengerPartnerEmail, subjectPartner, body);
   }
@@ -158,7 +159,7 @@ export async function sendChallengeNotification(opts: {
       <p><strong>${retadores}</strong> te ${safePartner ? "han" : "ha"} retado${safeChallengedPartner ? ` junto con <strong>${safeChallengedPartner}</strong>` : ""} en <strong>${safeClub}</strong>.</p>
       <p style="font-size:16px;font-weight:700;color:#0f172a;">¿Aceptás el desafío?</p>
       ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
-      <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
+      <a class="btn" href="${APP_URL}/challenges">Ver desafío</a>`
     );
     await sendEmail(challengedEmail, subjectChallenged, body);
   }
@@ -173,7 +174,7 @@ export async function sendChallengeNotification(opts: {
       <p><strong>${retadores}</strong> te ${safePartner ? "han" : "ha"} retado junto con <strong>${safeChallenged}</strong> en <strong>${safeClub}</strong>.</p>
       <p style="font-size:16px;font-weight:700;color:#0f172a;">¿Aceptás el desafío?</p>
       ${safeMessage ? `<p style="background:#f8fafc;padding:12px;border-radius:8px;border-left:3px solid #16a34a;"><em>"${safeMessage}"</em></p>` : ""}
-      <a class="btn" href="https://twinco.padelx.es/challenges">Ver desafío</a>`
+      <a class="btn" href="${APP_URL}/challenges">Ver desafío</a>`
     );
     await sendEmail(challengedPartnerEmail, subjectPartner, body);
   }
@@ -210,7 +211,7 @@ export async function sendMatchNotification(opts: {
         <tr><td>Fecha</td><td>${safeDate}</td></tr>
         ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
       </table>
-      <a class="btn" href="https://twinco.padelx.es/matches">Ver partido</a>`
+      <a class="btn" href="${APP_URL}/matches">Ver partido</a>`
     );
 
     await sendEmail(player.email, subject, body);
@@ -247,7 +248,7 @@ export async function sendMatchProposalNotification(opts: {
         ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
       </table>
       <p>Por favor, revisá la propuesta y creá el partido desde el panel de administración.</p>
-      <a class="btn" href="https://twinco.padelx.es/matches/friendly/create">Crear Partido Amistoso</a>`
+      <a class="btn" href="${APP_URL}/matches/friendly/create">Crear Partido Amistoso</a>`
     );
 
     await sendEmail(admin.email, subject, body);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createUserSchema } from "@/lib/validation";
 import { z } from "zod";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -18,6 +19,12 @@ function debugProfileFlags(profile: any) {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const { success } = rateLimit(`create-user:${ip}`, { maxRequests: 5, windowMs: 60_000 });
+    if (!success) {
+      return NextResponse.json({ error: "Demasiados intentos. Intentá en un minuto." }, { status: 429 });
+    }
+
     if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
       return NextResponse.json(
         { error: "Servidor mal configurado (env faltante)" },

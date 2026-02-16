@@ -57,8 +57,8 @@ export async function GET(request: NextRequest) {
 
     // Obtener parámetros
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '20');
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20')), 100);
     const status = url.searchParams.get('status');
     const search = url.searchParams.get('search');
 

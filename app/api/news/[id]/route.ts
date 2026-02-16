@@ -38,29 +38,36 @@ export async function GET(
       global: { headers: { Authorization: req.headers.get("authorization") || "" } },
     });
 
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("role, tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 });
+    }
+
+    // Query news scoped to user's tenant
     const { data: news, error } = await supabaseClient
       .from("news")
       .select("*")
       .eq("id", newsId)
+      .eq("tenant_id", profile.tenant_id)
       .single();
 
     if (error || !news) {
       return NextResponse.json({ error: "Noticia no encontrada" }, { status: 404 });
     }
 
+    // Unpublished news only visible to admin/manager
     if (news.published === false) {
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (!user) {
-        return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-      }
-
-      const { data: profile } = await supabaseClient
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile || (profile.role !== "admin" && profile.role !== "manager")) {
+      if (profile.role !== "admin" && profile.role !== "manager") {
         return NextResponse.json({ error: "No autorizado" }, { status: 401 });
       }
     }
@@ -104,7 +111,7 @@ export async function PUT(
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("role")
+      .select("role, tenant_id")
       .eq("id", user.id)
       .single();
 
@@ -129,6 +136,7 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq("id", newsId)
+      .eq("tenant_id", profile.tenant_id)
       .select()
       .single();
 
@@ -195,7 +203,7 @@ export async function DELETE(
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("role")
+      .select("role, tenant_id")
       .eq("id", user.id)
       .single();
 
@@ -213,7 +221,8 @@ export async function DELETE(
     const { error } = await supabaseAdmin
       .from("news")
       .delete()
-      .eq("id", newsId);
+      .eq("id", newsId)
+      .eq("tenant_id", profile.tenant_id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

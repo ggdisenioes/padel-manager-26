@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
 import { useTenantPlan } from "../hooks/useTenantPlan";
+import { useTranslation } from "../i18n";
+import LanguageSelector from "./LanguageSelector";
 import toast from "react-hot-toast";
 
 type SidebarProps = {
@@ -25,6 +27,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   const pathname = usePathname();
   const { role, isAdmin, isManager } = useRole();
   const { hasFeature, loading: planLoading } = useTenantPlan();
+  const { t } = useTranslation();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
@@ -95,7 +98,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   ) => {
     if (!user) {
       e.preventDefault();
-      toast.error("Para visualizar los datos debe estar registrado");
+      toast.error(t("auth.loginRequired"));
       router.push("/login");
     } else {
       router.push(href);
@@ -104,23 +107,23 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
 
   // MENÚ GENERAL (visible para todos, algunos gated por plan)
   const generalMenuItems = [
-    { id: "dashboard", label: "Panel General", href: "/", emoji: "📊" },
-    { id: "tournaments", label: "Torneos", href: "/tournaments", emoji: "🏆" },
-    { id: "players", label: "Jugadores", href: "/players", emoji: "👥" },
-    { id: "matches", label: "Partidos en Vivo", href: "/matches", emoji: "🎾" },
-    { id: "ranking", label: "Ranking", href: "/ranking", emoji: "⭐", requiredFeature: "has_advanced_rankings" },
-    { id: "news", label: "Noticias", href: "/news", emoji: "📰" },
-    { id: "challenges", label: "Desafíos", href: "/challenges", emoji: "⚔️" },
-    { id: "bookings", label: "Reservar Pista", href: "/bookings", emoji: "📅" },
-    { id: "mi-cuenta", label: "Mi Cuenta", href: "/mi-cuenta", emoji: "👤" },
+    { id: "dashboard", label: t("nav.dashboard"), href: "/", emoji: "📊" },
+    { id: "tournaments", label: t("nav.tournaments"), href: "/tournaments", emoji: "🏆" },
+    { id: "players", label: t("nav.players"), href: "/players", emoji: "👥" },
+    { id: "matches", label: t("nav.matches"), href: "/matches", emoji: "🎾" },
+    { id: "ranking", label: t("nav.ranking"), href: "/ranking", emoji: "⭐", requiredFeature: "has_advanced_rankings" },
+    { id: "news", label: t("nav.news"), href: "/news", emoji: "📰" },
+    { id: "challenges", label: t("nav.challenges"), href: "/challenges", emoji: "⚔️" },
+    { id: "bookings", label: t("nav.bookings"), href: "/bookings", emoji: "📅" },
+    { id: "mi-cuenta", label: t("nav.myAccount"), href: "/mi-cuenta", emoji: "👤" },
   ];
 
   // MENÚ ADMINISTRACIÓN (solo Admin/Manager)
   const adminMenuItems = [
-    { id: "management", label: "Gestión de Usuarios", href: "/admin/management", emoji: "⚙️" },
-    { id: "courts", label: "Administrador de Pistas", href: "/courts", emoji: "🏟️" },
-    { id: "news-admin", label: "Gestión de Noticias", href: "/admin/news", emoji: "📝" },
-    { id: "analytics", label: "Analytics Avanzado", href: "/admin/analytics", emoji: "📈", requiredFeature: "has_player_stats" },
+    { id: "management", label: t("nav.userManagement"), href: "/admin/management", emoji: "⚙️" },
+    { id: "courts", label: t("nav.courtAdmin"), href: "/courts", emoji: "🏟️" },
+    { id: "news-admin", label: t("nav.newsAdmin"), href: "/admin/news", emoji: "📝" },
+    { id: "analytics", label: t("nav.analytics"), href: "/admin/analytics", emoji: "📈", requiredFeature: "has_player_stats" },
   ];
 
   const getInitials = (u: UserInfo | null): string => {
@@ -207,7 +210,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
             >
               <div className="flex items-center gap-3">
                 <span className="text-lg">🔐</span>
-                <span className="text-white">Administración</span>
+                <span className="text-white">{t("nav.administration")}</span>
               </div>
               <span className={`text-lg transition ${adminMenuOpen ? "rotate-180" : ""}`}>
                 ▼
@@ -256,7 +259,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
               onClick={handleLogout}
               className="w-full rounded-md bg-red-600/30 text-red-300 py-[7px] text-[13px] font-semibold hover:bg-red-600/50 transition"
             >
-              Cerrar Sesión
+              {t("auth.logout")}
             </button>
           </>
         ) : (
@@ -266,13 +269,17 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
               onClick={onLinkClick}
               className="text-sm text-[#ccff00] hover:underline"
             >
-              Iniciar sesión &rarr;
+              {t("auth.login")} &rarr;
             </Link>
           </div>
         )}
 
-        <p className="mt-3 text-center text-[9px] text-gray-500">
-          Desarrollado por{" "}
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <LanguageSelector />
+        </div>
+
+        <p className="mt-2 text-center text-[9px] text-gray-500">
+          {t("common.developedBy")}{" "}
           <a
             href="https://ggdisenio.es"
             target="_blank"

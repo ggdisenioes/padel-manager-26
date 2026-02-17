@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslation } from "../i18n";
 
 function getBaseDomain(hostname: string) {
   const parts = hostname.split(".");
@@ -10,20 +11,20 @@ function getBaseDomain(hostname: string) {
   return parts.slice(-2).join(".");
 }
 
-function getLoginMessage(errorCode: string | null) {
+function getLoginMessage(errorCode: string | null, t: (key: string) => string) {
   switch (errorCode) {
     case "tenant_incorrecto":
-      return "Este usuario pertenece a otro club. Ingresá desde el subdominio correcto.";
+      return t("errors.tenantIncorrecto");
     case "usuario_deshabilitado":
-      return "Usuario deshabilitado, contacte su administrador.";
+      return t("auth.userDisabled");
     case "tenant_no_asignado":
-      return "Tu usuario no tiene club asignado. Contactá al administrador.";
+      return t("errors.tenantNoAsignado");
     case "perfil_no_encontrado":
-      return "No se pudo leer tu perfil. Probá cerrar sesión e ingresar nuevamente.";
+      return t("errors.perfilNoEncontrado");
     case "tenant_invalido":
-      return "Tu club no es válido. Contactá al administrador.";
+      return t("errors.tenantInvalido");
     case "aprobacion_en_curso":
-      return "Tu solicitud de acceso está en revisión. Contactá al administrador del club.";
+      return t("auth.pendingApproval");
     default:
       return null;
   }
@@ -32,6 +33,7 @@ function getLoginMessage(errorCode: string | null) {
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,7 +52,7 @@ export default function LoginPage() {
   }, [tenantSlug]);
 
   useEffect(() => {
-    const msg = getLoginMessage(errorCode);
+    const msg = getLoginMessage(errorCode, t);
     if (msg) setErrorMsg(msg);
   }, [errorCode]);
 
@@ -67,8 +69,8 @@ export default function LoginPage() {
     if (error || !data.session || !data.user) {
       setErrorMsg(
         error?.message === "Invalid login credentials"
-          ? "Usuario o contraseña incorrectos"
-          : error?.message ?? "Error al iniciar sesión"
+          ? t("auth.invalidCredentials")
+          : error?.message ?? t("auth.loginError")
       );
       setLoading(false);
       return;
@@ -84,8 +86,8 @@ export default function LoginPage() {
       await supabase.auth.signOut();
       setErrorMsg(
         profile && profile.active === false
-          ? "Tu solicitud de acceso está en revisión. Contactá al administrador del club."
-          : "Usuario deshabilitado, contacte su administrador."
+          ? t("auth.pendingApproval")
+          : t("auth.userDisabled")
       );
       setLoading(false);
       return;

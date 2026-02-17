@@ -8,6 +8,7 @@ import Link from "next/link";
 import Card from "../../components/Card";
 import { createUserSchema } from "../../lib/validation";
 import { z } from "zod";
+import { useTranslation } from "../../i18n";
 
 type TabType = "create" | "manage" | "logs";
 

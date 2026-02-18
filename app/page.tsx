@@ -9,8 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { useRole } from "@/hooks/useRole";
 import MatchCard from "@/components/matches/MatchCard";
 import toast from "react-hot-toast";
-import MatchShareCard from "./components/matches/MatchShareCard";
-import { formatTimeMadrid, formatDateTimeMadrid } from "@/lib/dates";
+import { formatDateMadrid, formatTimeMadrid, formatDateTimeMadrid } from "@/lib/dates";
 import { useTranslation } from "./i18n";
 
 type PlayerMap = {
@@ -77,6 +76,10 @@ type FinishedMatch = {
   id: number;
   tournament_id: number | null;
   start_time: string | null;
+  round_name?: string | null;
+  place?: string | null;
+  court?: string | null;
+  tournament_name?: string;
   score: string | null;
   winner: string | null;
   // Esquema anterior
@@ -337,7 +340,7 @@ export default function DashboardPage() {
       // 4.5) Resultados recientes
       const { data: finishedMatches } = await supabase
         .from("matches")
-        .select("id, tournament_id, start_time, round_name, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
+        .select("id, tournament_id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
         .neq("winner", "pending")
         .order("created_at", { ascending: false })
         .limit(5);
@@ -552,7 +555,7 @@ export default function DashboardPage() {
   const buildTeamNameFromIds = (p1: number | null, p2: number | null) => {
     const a = getPlayerName(p1);
     const b = getPlayerName(p2);
-    const joined = [a, b].filter((x) => x && x !== "-").join(" / ");
+    const joined = [a, b].filter((x) => x && x !== "-").join(" y ");
     return joined || "Por definir";
   };
 
@@ -565,31 +568,6 @@ export default function DashboardPage() {
     if (m.winner === "B") return { winnerTeam: teamB, loserTeam: teamA, score };
     return { winnerTeam: teamA, loserTeam: teamB, score };
   };
-
-  // Helper: Genera PNG desde el shareCardRef usando html-to-image (mismo enfoque que /matches)
-  const generatePngFromShareRef = async () => {
-    if (!shareCardRef.current) return null;
-
-    try {
-      const dataUrl = await toPng(shareCardRef.current, {
-        cacheBust: true,
-        pixelRatio: 2,
-        width: 600,
-        height: 600,
-        backgroundColor: "#020617",
-      });
-
-      const blob = await (await fetch(dataUrl)).blob();
-      if (!blob) return null;
-
-      const url = URL.createObjectURL(blob);
-      return { blob, url };
-    } catch (err) {
-      console.error("Error generando imagen:", err);
-      return null;
-    }
-  };
-
 
   if (isUser) {
     // Usuario cliente: solo vista informativa
@@ -1111,33 +1089,162 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      {/* Render oculto para generar imagen (Instagram 1:1) */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: -10000,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      >
-        {openResultMatch && isPlayed(openResultMatch) && (
-          <div ref={shareCardRef}>
-            {(() => {
-              const t = getWinnerLoserTeams(openResultMatch);
-              return (
-                <MatchShareCard
-                  winnerTeam={t.winnerTeam}
-                  loserTeam={t.loserTeam}
-                  score={t.score}
-                />
-              );
-            })()}
-          </div>
-        )}
-      </div>
+      {openResultMatch && isPlayed(openResultMatch) && (() => {
+        const match = openResultMatch;
+        const result = getWinnerLoserTeams(match);
+        const matchType = match.tournament_id
+          ? match.tournament_name || tournamentMap[match.tournament_id] || t("matches.typeTournament")
+          : t("matches.friendlyMatchLabel");
+        const dateStr = match.start_time ? formatDateMadrid(match.start_time) : "";
+        const timeStr = match.start_time ? formatTimeMadrid(match.start_time) : "";
+        const courtPlace = [match.court, match.place].filter(Boolean).join(" · ");
 
-      {openResultMatch && (
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 relative shadow-2xl">
+              <button
+                onClick={() => setOpenResultMatch(null)}
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
+              >
+                ✕
+              </button>
+
+              <div style={{ overflow: "hidden", borderRadius: 16 }}>
+                <div
+                  ref={shareCardRef}
+                  style={{
+                    width: 480,
+                    height: 520,
+                    backgroundColor: "#0b1220",
+                    borderRadius: 0,
+                    padding: "28px 32px",
+                    color: "#fff",
+                    fontFamily: "system-ui, -apple-system, sans-serif",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    transform: "scale(0.82)",
+                    transformOrigin: "top left",
+                    marginBottom: -90,
+                  }}
+                >
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 3, fontStyle: "italic", color: "#ffffff" }}>
+                      TWINCO
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 5, color: "#ccff00", marginTop: 3 }}>
+                      PÁDEL MANAGER
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "center", marginTop: 14 }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        backgroundColor: match.tournament_id ? "#1a3a2a" : "#1a2a3a",
+                        color: match.tournament_id ? "#4ade80" : "#60a5fa",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "5px 16px",
+                        borderRadius: 20,
+                        letterSpacing: 1,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {matchType}
+                    </span>
+                  </div>
+
+                  <div style={{ textAlign: "center", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#4ade80", letterSpacing: 3, marginBottom: 6 }}>
+                        {t("matches.shareCardWinners").toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "#ffffff" }}>
+                        {result.winnerTeam}
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: 56, fontWeight: 900, letterSpacing: 4, color: "#ccff00", margin: "8px 0" }}>
+                      {result.score}
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 3, marginBottom: 6 }}>
+                        {t("matches.shareCardLosers").toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 16, color: "#999" }}>
+                        {result.loserTeam}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ height: 1, backgroundColor: "#1e293b", marginBottom: 12 }} />
+                    <div style={{ display: "flex", justifyContent: "center", gap: 16, fontSize: 11, color: "#64748b" }}>
+                      {dateStr && <span>{dateStr}</span>}
+                      {timeStr && <span>{timeStr}h</span>}
+                      {courtPlace && <span>{courtPlace}</span>}
+                    </div>
+                    <div style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "#334155" }}>
+                      {process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "") || "padelx.es"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const el = shareCardRef.current;
+                    if (!el) {
+                      toast.error(t("shareModal.errorCreating"));
+                      return;
+                    }
+
+                    const origTransform = el.style.transform;
+                    const origMargin = el.style.marginBottom;
+                    el.style.transform = "none";
+                    el.style.marginBottom = "0";
+
+                    try {
+                      const dataUrl = await toPng(el, {
+                        cacheBust: true,
+                        pixelRatio: 2,
+                        width: 480,
+                        height: 520,
+                      });
+                      const link = document.createElement("a");
+                      link.download = `Twinco_Partido_${match.id}.png`;
+                      link.href = dataUrl;
+                      link.click();
+                      toast.success(t("matches.imageDownloaded"));
+                    } catch (err) {
+                      console.error("toPng error:", err);
+                      toast.error(t("shareModal.errorCreating"));
+                    } finally {
+                      el.style.transform = origTransform;
+                      el.style.marginBottom = origMargin;
+                    }
+                  }}
+                  className="flex-1 bg-gray-900 text-white py-2.5 rounded-xl font-semibold hover:bg-black transition text-sm"
+                >
+                  {t("shareModal.download")}
+                </button>
+              </div>
+
+              <button
+                onClick={() => setOpenResultMatch(null)}
+                className="w-full border border-gray-200 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition"
+              >
+                {t("shareModal.close")}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {openResultMatch && !isPlayed(openResultMatch) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
             <button
@@ -1146,148 +1253,13 @@ export default function DashboardPage() {
             >
               ✕
             </button>
-
-            <div className="flex flex-col items-center gap-1">
-              <img
-                src="/logo.svg"
-                alt="DEMO Padel Manager"
-                className="h-8 w-auto object-contain"
-              />
-              <span className="text-xs tracking-widest text-green-400">PADEL MANAGER</span>
-            </div>
-
-            <div className="text-center space-y-2 mt-4">
-              {isPlayed(openResultMatch) ? (
-                <>
-                  <p className="text-lg font-semibold">
-                    {openResultMatch.winner === "A"
-                      ? buildTeamNameFromIds(
-                          openResultMatch.player_1_a,
-                          openResultMatch.player_2_a
-                        )
-                      : buildTeamNameFromIds(
-                          openResultMatch.player_1_b,
-                          openResultMatch.player_2_b
-                        )}
-                  </p>
-
-                  <p className="text-5xl font-extrabold my-2">
-                    {formatScoreForDisplay(openResultMatch.score)}
-                  </p>
-
-                  <p className="text-sm text-white/70">
-                    {openResultMatch.winner === "A"
-                      ? buildTeamNameFromIds(
-                          openResultMatch.player_1_b,
-                          openResultMatch.player_2_b
-                        )
-                      : buildTeamNameFromIds(
-                          openResultMatch.player_1_a,
-                          openResultMatch.player_2_a
-                        )}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-white/60">{t("dashboard.resultPending")}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <button
-                disabled={!isPlayed(openResultMatch)}
-                onClick={async () => {
-                  if (!isPlayed(openResultMatch)) return;
-                  try {
-                    const result = await generatePngFromShareRef();
-                    if (!result) {
-                      toast.error(t("shareModal.errorCreating"));
-                      return;
-                    }
-
-                    const { blob, url } = result;
-                    const file = new File([blob], "resultado-padelx-qa.png", {
-                      type: "image/png",
-                    });
-
-                    if (navigator.share) {
-                      try {
-                        await navigator.share({
-                          files: [file],
-                          title: t("matches.shareResult"),
-                          text: t("matches.shareResult"),
-                        });
-                        toast.success(t("shareModal.download"));
-                        URL.revokeObjectURL(url);
-                        return;
-                      } catch (err: any) {
-                        if (
-                          err?.name === "AbortError" ||
-                          err?.message === "Share canceled"
-                        ) {
-                          URL.revokeObjectURL(url);
-                          return;
-                        }
-                        // si share falla, caemos al download
-                      }
-                    }
-
-                    // Fallback: descargar
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "resultado-padelx-qa.png";
-                    a.click();
-                    toast.success(t("shareModal.download"));
-                    URL.revokeObjectURL(url);
-                  } catch (err) {
-                    console.error(err);
-                    toast.error(t("shareModal.errorCreating"));
-                  }
-                }}
-                className={`w-full mt-2 py-2 rounded-xl font-semibold transition ${
-                  isPlayed(openResultMatch)
-                    ? "bg-green-600 hover:bg-green-700 text-white"
-                    : "bg-white/10 text-white/40 cursor-not-allowed"
-                }`}
-              >
-                {t("matches.shareResult")}
-              </button>
-
-              <button
-                disabled={!isPlayed(openResultMatch)}
-                onClick={async () => {
-                  if (!isPlayed(openResultMatch)) return;
-                  try {
-                    const result = await generatePngFromShareRef();
-                    if (!result) {
-                      toast.error("No se pudo generar la imagen");
-                      return;
-                    }
-
-                    const { url } = result;
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "resultado-padelx-qa.png";
-                    a.click();
-                    toast.success(t("shareModal.download"));
-                    URL.revokeObjectURL(url);
-                  } catch (err) {
-                    console.error(err);
-                    toast.error(t("shareModal.errorCreating"));
-                  }
-                }}
-                className={`w-full py-2 rounded-xl font-semibold transition ${
-                  isPlayed(openResultMatch)
-                    ? "bg-white/10 hover:bg-white/20 text-white"
-                    : "bg-white/5 text-white/30 cursor-not-allowed"
-                }`}
-              >
-                {t("shareModal.download")}
-              </button>
-
-              <p className="text-center text-xs text-white/60">
-                {t("matches.shareResult")}
-              </p>
-            </div>
+            <p className="text-sm text-white/60 text-center">{t("dashboard.resultPending")}</p>
+            <button
+              onClick={() => setOpenResultMatch(null)}
+              className="w-full py-2 rounded-xl font-semibold bg-white/10 hover:bg-white/20 text-white transition"
+            >
+              {t("shareModal.close")}
+            </button>
           </div>
         </div>
       )}

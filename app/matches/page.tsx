@@ -465,12 +465,11 @@ export default function MatchesPage() {
                 }}>
                   {/* Header with logo */}
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 3, fontStyle: "italic", color: "#ffffff" }}>
-                      TWINCO
-                    </div>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 5, color: "#ccff00", marginTop: 3 }}>
-                      PÁDEL MANAGER
-                    </div>
+                    <img
+                      src="/logo.svg"
+                      alt="TWINCO"
+                      style={{ height: 44, width: "auto", margin: "0 auto", objectFit: "contain" }}
+                    />
                   </div>
 
                   {/* Match type badge */}

@@ -105,6 +105,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const originalTextRef = useRef(new WeakMap<Text, string>());
   const originalAttrsRef = useRef(new WeakMap<Element, Record<string, string>>());
   const applyingRef = useRef(false);
+  const pendingNodesRef = useRef(new Set<Node>());
+  const rafIdRef = useRef<number | null>(null);
 
   const domTranslationMap = useMemo(() => {
     const esFlat: Record<string, string> = {};
@@ -144,81 +146,156 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     const translatableAttrs = ["placeholder", "title", "aria-label", "value"];
     const excludedParents = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "CODE", "PRE"]);
+    const attrSelector = translatableAttrs.map((attr) => `[${attr}]`).join(",");
 
-    const applyDomTranslation = () => {
+    const shouldSkipTextNode = (textNode: Text) => {
+      if (!textNode.nodeValue || !textNode.nodeValue.trim()) return true;
+      let parent = textNode.parentElement;
+      while (parent) {
+        if (excludedParents.has(parent.tagName)) return true;
+        parent = parent.parentElement;
+      }
+      return false;
+    };
+
+    const applyTextNodeTranslation = (textNode: Text) => {
+      if (shouldSkipTextNode(textNode)) return;
+      if (!originalTextRef.current.has(textNode)) {
+        originalTextRef.current.set(textNode, textNode.nodeValue ?? "");
+      }
+      const original = originalTextRef.current.get(textNode) ?? "";
+      const nextValue =
+        locale === "en"
+          ? translatePreservingWhitespace(
+              original,
+              domTranslationMap.map,
+              domTranslationMap.entries
+            )
+          : original;
+      if (textNode.nodeValue !== nextValue) {
+        textNode.nodeValue = nextValue;
+      }
+    };
+
+    const applyElementAttrTranslation = (el: Element) => {
+      if (excludedParents.has(el.tagName)) return;
+      if (!originalAttrsRef.current.has(el)) {
+        originalAttrsRef.current.set(el, {});
+      }
+      const attrStore = originalAttrsRef.current.get(el)!;
+      translatableAttrs.forEach((attr) => {
+        const currentValue = el.getAttribute(attr);
+        if (currentValue == null) return;
+        if (attrStore[attr] === undefined) {
+          attrStore[attr] = currentValue;
+        }
+        const original = attrStore[attr];
+        const nextValue =
+          locale === "en"
+            ? translatePreservingWhitespace(
+                original,
+                domTranslationMap.map,
+                domTranslationMap.entries
+              )
+            : original;
+        if (currentValue !== nextValue) {
+          el.setAttribute(attr, nextValue);
+        }
+      });
+    };
+
+    const applyNodeTranslation = (node: Node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        applyTextNodeTranslation(node as Text);
+        return;
+      }
+
+      if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+        node.childNodes.forEach((child) => applyNodeTranslation(child));
+        return;
+      }
+
+      if (!(node instanceof Element)) return;
+      if (excludedParents.has(node.tagName)) return;
+
+      applyElementAttrTranslation(node);
+
+      const textWalker = document.createTreeWalker(
+        node,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(candidate) {
+            return shouldSkipTextNode(candidate as Text)
+              ? NodeFilter.FILTER_REJECT
+              : NodeFilter.FILTER_ACCEPT;
+          },
+        }
+      );
+
+      let current = textWalker.nextNode();
+      while (current) {
+        applyTextNodeTranslation(current as Text);
+        current = textWalker.nextNode();
+      }
+
+      const elements = node.querySelectorAll<HTMLElement>(attrSelector);
+      elements.forEach((el) => applyElementAttrTranslation(el));
+    };
+
+    const applyWithGuard = (fn: () => void) => {
       if (applyingRef.current) return;
       applyingRef.current = true;
       try {
-        const textWalker = document.createTreeWalker(
-          document.body,
-          NodeFilter.SHOW_TEXT,
-          {
-            acceptNode(node) {
-              const parent = node.parentElement;
-              if (!parent) return NodeFilter.FILTER_REJECT;
-              if (excludedParents.has(parent.tagName)) return NodeFilter.FILTER_REJECT;
-              if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-              return NodeFilter.FILTER_ACCEPT;
-            },
-          }
-        );
-
-        let current = textWalker.nextNode();
-        while (current) {
-          const textNode = current as Text;
-          if (!originalTextRef.current.has(textNode)) {
-            originalTextRef.current.set(textNode, textNode.nodeValue ?? "");
-          }
-          const original = originalTextRef.current.get(textNode) ?? "";
-          const nextValue =
-            locale === "en"
-              ? translatePreservingWhitespace(
-                  original,
-                  domTranslationMap.map,
-                  domTranslationMap.entries
-                )
-              : original;
-          if (textNode.nodeValue !== nextValue) {
-            textNode.nodeValue = nextValue;
-          }
-          current = textWalker.nextNode();
-        }
-
-        const selector = translatableAttrs.map((attr) => `[${attr}]`).join(",");
-        const elements = document.querySelectorAll<HTMLElement>(selector);
-        elements.forEach((el) => {
-          if (!originalAttrsRef.current.has(el)) {
-            originalAttrsRef.current.set(el, {});
-          }
-          const attrStore = originalAttrsRef.current.get(el)!;
-          translatableAttrs.forEach((attr) => {
-            const currentValue = el.getAttribute(attr);
-            if (currentValue == null) return;
-            if (attrStore[attr] === undefined) {
-              attrStore[attr] = currentValue;
-            }
-            const original = attrStore[attr];
-            const nextValue =
-              locale === "en"
-                ? translatePreservingWhitespace(
-                    original,
-                    domTranslationMap.map,
-                    domTranslationMap.entries
-                  )
-                : original;
-            if (currentValue !== nextValue) {
-              el.setAttribute(attr, nextValue);
-            }
-          });
-        });
+        fn();
       } finally {
         applyingRef.current = false;
       }
     };
 
-    applyDomTranslation();
+    const flushQueuedNodes = () => {
+      rafIdRef.current = null;
+      const nodes = Array.from(pendingNodesRef.current);
+      pendingNodesRef.current.clear();
+      applyWithGuard(() => {
+        nodes.forEach((node) => applyNodeTranslation(node));
+      });
+    };
 
-    const observer = new MutationObserver(() => applyDomTranslation());
+    const queueNode = (node: Node) => {
+      pendingNodesRef.current.add(node);
+      if (rafIdRef.current != null) return;
+      rafIdRef.current = window.requestAnimationFrame(flushQueuedNodes);
+    };
+
+    applyWithGuard(() => applyNodeTranslation(document.body));
+
+    if (locale !== "en") {
+      return () => {
+        if (rafIdRef.current != null) {
+          window.cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
+        pendingNodesRef.current.clear();
+      };
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      if (applyingRef.current) return;
+      for (const mutation of mutations) {
+        if (mutation.type === "childList") {
+          mutation.addedNodes.forEach((node) => queueNode(node));
+          continue;
+        }
+        if (mutation.type === "characterData") {
+          queueNode(mutation.target);
+          continue;
+        }
+        if (mutation.type === "attributes") {
+          queueNode(mutation.target);
+        }
+      }
+    });
+
     observer.observe(document.body, {
       subtree: true,
       childList: true,
@@ -227,7 +304,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       attributeFilter: translatableAttrs,
     });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafIdRef.current != null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      pendingNodesRef.current.clear();
+    };
   }, [locale, mounted, domTranslationMap]);
 
   const t = useCallback(

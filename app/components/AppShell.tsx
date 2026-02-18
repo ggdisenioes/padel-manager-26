@@ -222,7 +222,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
-            <div className="absolute inset-y-0 left-0 w-64 max-w-[80%] animate-slide-in-left">
+            <div className="absolute inset-y-0 left-0 w-64 max-w-[80%] overflow-hidden animate-slide-in-left">
               <Sidebar onLinkClick={() => setMobileOpen(false)} />
             </div>
           </div>

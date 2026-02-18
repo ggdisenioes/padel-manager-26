@@ -165,36 +165,68 @@ export default function DashboardPage() {
     const alertsList: AlertItem[] = [];
     const now = new Date();
 
-    // 1️⃣ Partido atrasado
-    const { data: overdueMatches, error: overdueErr } = await supabase
-      .from("matches")
-      .select("id, start_time")
-      .eq("winner", "pending")
-      .lt("start_time", now.toISOString());
+    const [
+      { count: overdueCount, error: overdueErr },
+      { data: tournaments, error: tErr },
+      { data: players, error: pErr },
+      { data: matchesLite, error: mErr },
+    ] = await Promise.all([
+      supabase
+        .from("matches")
+        .select("id", { count: "exact", head: true })
+        .eq("winner", "pending")
+        .lt("start_time", now.toISOString()),
+      supabase.from("tournaments").select("id, name"),
+      supabase.from("players").select("id, name").eq("is_approved", true),
+      supabase
+        .from("matches")
+        .select(
+          "tournament_id, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id"
+        ),
+    ]);
 
-    if (!overdueErr && overdueMatches && overdueMatches.length > 0) {
+    // 1️⃣ Partido atrasado
+    if (!overdueErr && (overdueCount || 0) > 0) {
       alertsList.push({
         id: "overdue-matches",
         type: "warning",
-        message: `⚠️ Hay ${overdueMatches.length} partido(s) atrasado(s) sin resultado.`,
+        message: `⚠️ Hay ${overdueCount} partido(s) atrasado(s) sin resultado.`,
         actionLabel: "Cargar resultados",
         actionHref: "/matches?status=pending",
       });
     }
 
-    // 2️⃣ Torneos sin partidos
-    const { data: tournaments, error: tErr } = await supabase
-      .from("tournaments")
-      .select("id, name");
+    const tournamentsWithMatches = new Set<number>();
+    const playersWithMatches = new Set<number>();
 
+    if (!mErr && matchesLite) {
+      for (const match of matchesLite as any[]) {
+        const tournamentId = Number(match.tournament_id);
+        if (Number.isFinite(tournamentId) && tournamentId > 0) {
+          tournamentsWithMatches.add(tournamentId);
+        }
+
+        const participantIdsRaw = [
+          match.player_1_a ?? match.player_1_a_id,
+          match.player_2_a ?? match.player_2_a_id,
+          match.player_1_b ?? match.player_1_b_id,
+          match.player_2_b ?? match.player_2_b_id,
+        ];
+        const participantIds = participantIdsRaw
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+
+        for (const id of participantIds) {
+          playersWithMatches.add(id);
+        }
+      }
+    }
+
+    // 2️⃣ Torneos sin partidos
     if (!tErr && tournaments) {
       for (const t of tournaments) {
-        const { count } = await supabase
-          .from("matches")
-          .select("*", { count: "exact", head: true })
-          .eq("tournament_id", t.id);
-
-        if (!count || count === 0) {
+        const tournamentId = Number(t.id);
+        if (!Number.isFinite(tournamentId) || !tournamentsWithMatches.has(tournamentId)) {
           alertsList.push({
             id: `tournament-${t.id}`,
             type: "info",
@@ -207,22 +239,10 @@ export default function DashboardPage() {
     }
 
     // 3️⃣ Jugadores inactivos
-    const { data: players, error: pErr } = await supabase
-      .from("players")
-      .select("id, name")
-      .eq("is_approved", true);
-
     if (!pErr && players) {
       for (const p of players) {
-        const { count } = await supabase
-          .from("matches")
-          .select("*", { count: "exact", head: true })
-          .or(
-            `player_1_a.eq.${p.id},player_2_a.eq.${p.id},player_1_b.eq.${p.id},player_2_b.eq.${p.id},` +
-            `player_1_a_id.eq.${p.id},player_2_a_id.eq.${p.id},player_1_b_id.eq.${p.id},player_2_b_id.eq.${p.id}`
-          );
-
-        if (!count || count === 0) {
+        const playerId = Number(p.id);
+        if (!Number.isFinite(playerId) || !playersWithMatches.has(playerId)) {
           alertsList.push({
             id: `player-${p.id}`,
             type: "info",
@@ -235,7 +255,7 @@ export default function DashboardPage() {
     }
 
     setAlerts(alertsList.slice(0, 4));
-  }, []);
+  }, [t]);
 
 
   useEffect(() => {

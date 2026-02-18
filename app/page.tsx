@@ -3,7 +3,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toPng } from "html-to-image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRole } from "@/hooks/useRole";
@@ -72,6 +71,17 @@ type RankingItem = {
   games_against: number;
 };
 
+type TournamentRankingRow = {
+  tournament_id: number;
+  player_id: number;
+  points: number;
+  matches_won: number;
+  matches_lost: number;
+  games_for: number;
+  games_against: number;
+  players: { name: string | null } | { name: string | null }[] | null;
+};
+
 type FinishedMatch = {
   id: number;
   tournament_id: number | null;
@@ -96,25 +106,6 @@ type FinishedMatch = {
 
   created_at: string;
 };
-
-type RankingMatchRow = {
-  winner: "A" | "B" | string | null;
-  // Esquema anterior
-  player_1_a: number | null;
-  player_2_a: number | null;
-  player_1_b: number | null;
-  player_2_b: number | null;
-
-  // Nuevo esquema (amistosos)
-  player_1_a_id?: number | null;
-  player_2_a_id?: number | null;
-  player_1_b_id?: number | null;
-  player_2_b_id?: number | null;
-
-  score: string | null;
-  tournament_id: number | null;
-};
-
 
 export default function DashboardPage() {
   const { t } = useTranslation();
@@ -160,47 +151,45 @@ export default function DashboardPage() {
   };
 
 
-  // Función para calcular alertas inteligentes (estable para hooks/realtime)
-  const calculateAlerts = useCallback(async () => {
-    const alertsList: AlertItem[] = [];
-    const now = new Date();
+  // Función para calcular alertas inteligentes usando datasets ya cargados.
+  const calculateAlerts = useCallback(
+    ({
+      overdueCount,
+      tournaments,
+      players,
+      matchesLite,
+    }: {
+      overdueCount: number;
+      tournaments: Array<{ id: number; name: string }>;
+      players: Array<{ id: number; name: string }>;
+      matchesLite: Array<{
+        tournament_id: number | null;
+        player_1_a: number | null;
+        player_2_a: number | null;
+        player_1_b: number | null;
+        player_2_b: number | null;
+        player_1_a_id?: number | null;
+        player_2_a_id?: number | null;
+        player_1_b_id?: number | null;
+        player_2_b_id?: number | null;
+      }>;
+    }) => {
+      const alertsList: AlertItem[] = [];
 
-    const [
-      { count: overdueCount, error: overdueErr },
-      { data: tournaments, error: tErr },
-      { data: players, error: pErr },
-      { data: matchesLite, error: mErr },
-    ] = await Promise.all([
-      supabase
-        .from("matches")
-        .select("id", { count: "exact", head: true })
-        .eq("winner", "pending")
-        .lt("start_time", now.toISOString()),
-      supabase.from("tournaments").select("id, name"),
-      supabase.from("players").select("id, name").eq("is_approved", true),
-      supabase
-        .from("matches")
-        .select(
-          "tournament_id, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id"
-        ),
-    ]);
+      if (overdueCount > 0) {
+        alertsList.push({
+          id: "overdue-matches",
+          type: "warning",
+          message: `⚠️ Hay ${overdueCount} partido(s) atrasado(s) sin resultado.`,
+          actionLabel: t("matches.loadResult"),
+          actionHref: "/matches?status=pending",
+        });
+      }
 
-    // 1️⃣ Partido atrasado
-    if (!overdueErr && (overdueCount || 0) > 0) {
-      alertsList.push({
-        id: "overdue-matches",
-        type: "warning",
-        message: `⚠️ Hay ${overdueCount} partido(s) atrasado(s) sin resultado.`,
-        actionLabel: "Cargar resultados",
-        actionHref: "/matches?status=pending",
-      });
-    }
+      const tournamentsWithMatches = new Set<number>();
+      const playersWithMatches = new Set<number>();
 
-    const tournamentsWithMatches = new Set<number>();
-    const playersWithMatches = new Set<number>();
-
-    if (!mErr && matchesLite) {
-      for (const match of matchesLite as any[]) {
+      for (const match of matchesLite) {
         const tournamentId = Number(match.tournament_id);
         if (Number.isFinite(tournamentId) && tournamentId > 0) {
           tournamentsWithMatches.add(tournamentId);
@@ -212,208 +201,247 @@ export default function DashboardPage() {
           match.player_1_b ?? match.player_1_b_id,
           match.player_2_b ?? match.player_2_b_id,
         ];
-        const participantIds = participantIdsRaw
-          .map((id) => Number(id))
-          .filter((id) => Number.isFinite(id) && id > 0);
 
-        for (const id of participantIds) {
-          playersWithMatches.add(id);
+        for (const rawId of participantIdsRaw) {
+          const id = Number(rawId);
+          if (Number.isFinite(id) && id > 0) playersWithMatches.add(id);
         }
       }
-    }
 
-    // 2️⃣ Torneos sin partidos
-    if (!tErr && tournaments) {
-      for (const t of tournaments) {
-        const tournamentId = Number(t.id);
+      for (const tournament of tournaments) {
+        const tournamentId = Number(tournament.id);
         if (!Number.isFinite(tournamentId) || !tournamentsWithMatches.has(tournamentId)) {
           alertsList.push({
-            id: `tournament-${t.id}`,
+            id: `tournament-${tournament.id}`,
             type: "info",
-            message: `ℹ️ El torneo "${t.name}" no tiene partidos cargados.`,
-            actionLabel: "Crear partido",
-            actionHref: `/matches/create?tournament=${t.id}`,
+            message: `ℹ️ El torneo "${tournament.name}" no tiene partidos cargados.`,
+            actionLabel: t("matches.createManual"),
+            actionHref: `/matches/create?tournament=${tournament.id}`,
           });
         }
       }
-    }
 
-    // 3️⃣ Jugadores inactivos
-    if (!pErr && players) {
-      for (const p of players) {
-        const playerId = Number(p.id);
-        if (!Number.isFinite(playerId) || !playersWithMatches.has(playerId)) {
-          alertsList.push({
-            id: `player-${p.id}`,
-            type: "info",
-            message: t("dashboard.playerWithoutMatches", { name: p.name }),
-            actionLabel: t("dashboard.assignMatch"),
-            actionHref: `/matches/create?player=${p.id}`,
-          });
-        }
+      for (const player of players) {
+        const playerId = Number(player.id);
+        if (!Number.isFinite(playerId) || playersWithMatches.has(playerId)) continue;
+        alertsList.push({
+          id: `player-${player.id}`,
+          type: "info",
+          message: t("dashboard.playerWithoutMatches", { name: player.name }),
+          actionLabel: t("dashboard.assignMatch"),
+          actionHref: `/matches/create?player=${player.id}`,
+        });
       }
-    }
 
-    setAlerts(alertsList.slice(0, 4));
-  }, [t]);
-
+      setAlerts(alertsList.slice(0, 4));
+    },
+    [t]
+  );
 
   useEffect(() => {
+    let active = true;
+
     const loadData = async () => {
-      // 1) Contadores
-      const [{ count: pendingCount }, { count: playersCount }, { count: tournamentsCount }] =
-        await Promise.all([
+      setLoadingDashboard(true);
+
+      try {
+        const start7d = new Date();
+        start7d.setDate(start7d.getDate() - 6);
+        start7d.setHours(0, 0, 0, 0);
+        const nowIso = new Date().toISOString();
+
+        const [
+          { data: playersData, error: playersErr },
+          { data: tournamentsData, error: tournamentsErr },
+          { data: pendingMatches, count: pendingCount, error: pendingErr },
+          { data: matches7d, error: m7Err },
+          { data: finishedMatches, error: finishedErr },
+          { data: logs, error: logsErr },
+          { data: matchesLite, error: matchesLiteErr },
+          { count: overdueCount, error: overdueErr },
+        ] = await Promise.all([
+          supabase.from("players").select("id, name").eq("is_approved", true),
+          supabase.from("tournaments").select("id, name"),
           supabase
             .from("matches")
-            .select("*", { count: "exact", head: true })
-            .eq("winner", "pending"),
+            .select(
+              "id, start_time, tournament_id, round_name, place, court, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, winner, score",
+              { count: "exact" }
+            )
+            .eq("winner", "pending")
+            .order("start_time", { ascending: true })
+            .limit(5),
           supabase
-            .from("players")
-            .select("*", { count: "exact", head: true })
-            .eq("is_approved", true),
-          supabase.from("tournaments").select("*", { count: "exact", head: true }),
+            .from("matches")
+            .select("start_time, winner")
+            .gte("start_time", start7d.toISOString()),
+          supabase
+            .from("matches")
+            .select("id, tournament_id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
+            .neq("winner", "pending")
+            .order("created_at", { ascending: false })
+            .limit(5),
+          supabase
+            .from("action_logs")
+            .select("id, action, entity, entity_id, user_email, created_at")
+            .order("created_at", { ascending: false })
+            .limit(6),
+          supabase
+            .from("matches")
+            .select("tournament_id, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id"),
+          supabase
+            .from("matches")
+            .select("id", { count: "exact", head: true })
+            .eq("winner", "pending")
+            .lt("start_time", nowIso),
         ]);
 
-      setCountPendingMatches(pendingCount || 0);
-      setCountPlayers(playersCount || 0);
-      setCountTournaments(tournamentsCount || 0);
+        if (!active) return;
 
-      // 2) Jugadores (mapa id -> nombre)
-      const { data: players } = await supabase
-        .from("players")
-        .select("id, name")
-        .eq("is_approved", true);
+        if (playersErr) console.error("[dashboard] players error:", playersErr);
+        if (tournamentsErr) console.error("[dashboard] tournaments error:", tournamentsErr);
+        if (pendingErr) console.error("[dashboard] pending matches error:", pendingErr);
+        if (m7Err) console.error("[dashboard] chart matches error:", m7Err);
+        if (finishedErr) console.error("[dashboard] finished matches error:", finishedErr);
+        if (logsErr) console.error("[dashboard] logs error:", logsErr);
+        if (matchesLiteErr) console.error("[dashboard] matches lite error:", matchesLiteErr);
+        if (overdueErr) console.error("[dashboard] overdue count error:", overdueErr);
 
-      const pMap: PlayerMap = {};
-      (players || []).forEach((p: { id: number; name: string }) => {
-        pMap[p.id] = p.name;
-      });
-      setPlayerMap(pMap);
-      // Guardamos el mapa local para usarlo en el ranking (evita estado stale)
-      const localPlayerMap = pMap;
+        const approvedPlayers = (playersData || []) as Array<{ id: number; name: string }>;
+        const tournaments = (tournamentsData || []) as Array<{ id: number; name: string }>;
 
-      // 3) Torneos (mapa id -> nombre)
-      const { data: tournaments } = await supabase
-        .from("tournaments")
-        .select("id, name");
-
-      const tMap: TournamentMap = {};
-      (tournaments || []).forEach((t: { id: number; name: string }) => {
-        tMap[t.id] = t.name;
-      });
-      setTournamentMap(tMap);
-
-      // 4) Partidos pendientes
-      const { data: matches } = await supabase
-        .from("matches")
-        .select(
-          "id, start_time, tournament_id, round_name, place, court, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, winner, score"
-        )
-        .eq("winner", "pending")
-        .order("start_time", { ascending: true })
-        .limit(5);
-
-      setUpcomingMatches((matches || []).map((m: any) => normalizePlayersFromIds(m)));
-
-      // 4.25) Gráfico simple (últimos 7 días): partidos pendientes vs finalizados
-      const start7d = new Date();
-      start7d.setDate(start7d.getDate() - 6);
-      start7d.setHours(0, 0, 0, 0);
-
-      const { data: matches7d, error: m7Err } = await supabase
-        .from("matches")
-        .select("start_time, winner")
-        .gte("start_time", start7d.toISOString());
-
-      const days: { key: string; date: Date; label: string }[] = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(start7d);
-        d.setDate(start7d.getDate() + i);
-        const key = d.toISOString().slice(0, 10);
-        const label = d.toLocaleDateString("es-ES", { weekday: "short" });
-        days.push({ key, date: d, label });
-      }
-
-      const byDay: Record<
-        string,
-        { key: string; label: string; pending: number; finished: number; total: number }
-      > = {};
-      days.forEach((d) => {
-        byDay[d.key] = { key: d.key, label: d.label, pending: 0, finished: 0, total: 0 };
-      });
-
-      if (!m7Err && matches7d) {
-        for (const row of matches7d as { start_time: string | null; winner: string | null }[]) {
-          if (!row.start_time) continue;
-          const k = new Date(row.start_time).toISOString().slice(0, 10);
-          if (!byDay[k]) continue;
-
-          const isPending = !row.winner || String(row.winner).toLowerCase() === "pending";
-          if (isPending) byDay[k].pending += 1;
-          else byDay[k].finished += 1;
-          byDay[k].total += 1;
+        const pMap: PlayerMap = {};
+        for (const player of approvedPlayers) {
+          pMap[player.id] = player.name;
         }
+        setPlayerMap(pMap);
+
+        const tMap: TournamentMap = {};
+        for (const tournament of tournaments) {
+          tMap[tournament.id] = tournament.name;
+        }
+        setTournamentMap(tMap);
+
+        setCountPendingMatches(pendingCount || 0);
+        setCountPlayers(approvedPlayers.length);
+        setCountTournaments(tournaments.length);
+
+        setUpcomingMatches((pendingMatches || []).map((m: any) => normalizePlayersFromIds(m)));
+        setRecentResults((finishedMatches || []).map((m: any) => normalizePlayersFromIds(m)));
+        setRecentLogs(logs || []);
+
+        const days: { key: string; label: string }[] = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(start7d);
+          d.setDate(start7d.getDate() + i);
+          days.push({
+            key: d.toISOString().slice(0, 10),
+            label: d.toLocaleDateString("es-ES", { weekday: "short" }),
+          });
+        }
+
+        const byDay: Record<string, { key: string; label: string; pending: number; finished: number; total: number }> = {};
+        for (const d of days) {
+          byDay[d.key] = { key: d.key, label: d.label, pending: 0, finished: 0, total: 0 };
+        }
+
+        for (const row of (matches7d || []) as { start_time: string | null; winner: string | null }[]) {
+          if (!row.start_time) continue;
+          const key = new Date(row.start_time).toISOString().slice(0, 10);
+          if (!byDay[key]) continue;
+          const isPending = !row.winner || String(row.winner).toLowerCase() === "pending";
+          if (isPending) byDay[key].pending += 1;
+          else byDay[key].finished += 1;
+          byDay[key].total += 1;
+        }
+
+        setChart7d(days.map((d) => byDay[d.key]));
+
+        calculateAlerts({
+          overdueCount: overdueCount || 0,
+          tournaments,
+          players: approvedPlayers,
+          matchesLite: (matchesLite || []) as Array<{
+            tournament_id: number | null;
+            player_1_a: number | null;
+            player_2_a: number | null;
+            player_1_b: number | null;
+            player_2_b: number | null;
+            player_1_a_id?: number | null;
+            player_2_a_id?: number | null;
+            player_1_b_id?: number | null;
+            player_2_b_id?: number | null;
+          }>,
+        });
+      } catch (error) {
+        console.error("[dashboard] loadData error:", error);
+      } finally {
+        if (active) setLoadingDashboard(false);
       }
+    };
 
-      setChart7d(days.map((d) => byDay[d.key]));
+    void loadData();
 
-      // 4.5) Resultados recientes
-      const { data: finishedMatches } = await supabase
-        .from("matches")
-        .select("id, tournament_id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
-        .neq("winner", "pending")
-        .order("created_at", { ascending: false })
-        .limit(5);
+    return () => {
+      active = false;
+    };
+  }, [calculateAlerts]);
 
-      setRecentResults((finishedMatches || []).map((m: any) => normalizePlayersFromIds(m)));
+  useEffect(() => {
+    let active = true;
 
-      // 5) Logs iniciales
-      const { data: logs } = await supabase
-        .from("action_logs")
-        .select("id, action, entity, entity_id, user_email, created_at")
-        .order("created_at", { ascending: false })
-        .limit(6);
-
-      setRecentLogs(logs || []);
-
-      // 5.5) Ranking real (3 pts victoria, 1 pt derrota)
-      const { data: rankingMatches } = await supabase
+    const buildRankingFromMatchesFallback = async () => {
+      let matchesQuery = supabase
         .from("matches")
         .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, score, tournament_id")
         .neq("winner", "pending");
 
-      // Filter by tournament if selected
-      const filteredRankingMatches = selectedTournamentId
-        ? (rankingMatches || []).filter((m) => m.tournament_id === selectedTournamentId)
-        : rankingMatches || [];
+      if (selectedTournamentId) {
+        matchesQuery = matchesQuery.eq("tournament_id", selectedTournamentId);
+      }
 
-      const normalizedRankingMatches = filteredRankingMatches.map((m: any) => normalizePlayersFromIds(m));
+      const { data: rankingMatches, error: rankingMatchesError } = await matchesQuery;
+      if (!active) return;
+      if (rankingMatchesError) {
+        console.error("[dashboard] ranking fallback error:", rankingMatchesError);
+        setTopRanking([]);
+        return;
+      }
 
       const rankingMap: Record<number, RankingItem> = {};
+      for (const match of (rankingMatches || []) as Array<{
+        winner: string | null;
+        player_1_a: number | null;
+        player_2_a: number | null;
+        player_1_b: number | null;
+        player_2_b: number | null;
+        player_1_a_id?: number | null;
+        player_2_a_id?: number | null;
+        player_1_b_id?: number | null;
+        player_2_b_id?: number | null;
+        score: string | null;
+      }>) {
+        const normalized = normalizePlayersFromIds(match);
+        const teamA = [normalized.player_1_a, normalized.player_2_a].filter(Boolean) as number[];
+        const teamB = [normalized.player_1_b, normalized.player_2_b].filter(Boolean) as number[];
+        const winners = normalized.winner === "A" ? teamA : normalized.winner === "B" ? teamB : [];
+        const losers = normalized.winner === "A" ? teamB : normalized.winner === "B" ? teamA : [];
 
-      (normalizedRankingMatches).forEach((m: RankingMatchRow) => {
-        const teamA = [m.player_1_a, m.player_2_a].filter(Boolean) as number[];
-        const teamB = [m.player_1_b, m.player_2_b].filter(Boolean) as number[];
-
-        const winners = m.winner === "A" ? teamA : m.winner === "B" ? teamB : [];
-        const losers = m.winner === "A" ? teamB : m.winner === "B" ? teamA : [];
-
-        // Parse score for games_for/games_against
-        // Accepts "6-4", "6 4", "6:4", "6,4" etc, only first two numbers
-        let teamAScore = 0, teamBScore = 0;
-        if (typeof m.score === "string") {
-          const match = m.score.match(/(\d+)[\s\-:,]+(\d+)/);
-          if (match) {
-            teamAScore = parseInt(match[1], 10);
-            teamBScore = parseInt(match[2], 10);
+        let teamAScore = 0;
+        let teamBScore = 0;
+        if (typeof normalized.score === "string") {
+          const scoreMatch = normalized.score.match(/(\d+)[\s\-:,]+(\d+)/);
+          if (scoreMatch) {
+            teamAScore = parseInt(scoreMatch[1], 10);
+            teamBScore = parseInt(scoreMatch[2], 10);
           }
         }
-        // Winners
-        winners.forEach((pid) => {
-          if (!rankingMap[pid]) {
-            rankingMap[pid] = {
-              player_id: pid,
-              name: localPlayerMap[pid] || `Jugador ${pid}`,
+
+        for (const playerId of winners) {
+          if (!rankingMap[playerId]) {
+            rankingMap[playerId] = {
+              player_id: playerId,
+              name: playerMap[playerId] || `Jugador ${playerId}`,
               points: 0,
               wins: 0,
               played: 0,
@@ -422,24 +450,23 @@ export default function DashboardPage() {
               games_against: 0,
             };
           }
-          rankingMap[pid].wins += 1;
-          rankingMap[pid].points += 3;
-          rankingMap[pid].played += 1;
-          // Games for/against
-          if (m.winner === "A") {
-            rankingMap[pid].games_for += teamAScore;
-            rankingMap[pid].games_against += teamBScore;
-          } else if (m.winner === "B") {
-            rankingMap[pid].games_for += teamBScore;
-            rankingMap[pid].games_against += teamAScore;
+          rankingMap[playerId].wins += 1;
+          rankingMap[playerId].points += 3;
+          rankingMap[playerId].played += 1;
+          if (normalized.winner === "A") {
+            rankingMap[playerId].games_for += teamAScore;
+            rankingMap[playerId].games_against += teamBScore;
+          } else {
+            rankingMap[playerId].games_for += teamBScore;
+            rankingMap[playerId].games_against += teamAScore;
           }
-        });
-        // Losers
-        losers.forEach((pid) => {
-          if (!rankingMap[pid]) {
-            rankingMap[pid] = {
-              player_id: pid,
-              name: localPlayerMap[pid] || `Jugador ${pid}`,
+        }
+
+        for (const playerId of losers) {
+          if (!rankingMap[playerId]) {
+            rankingMap[playerId] = {
+              player_id: playerId,
+              name: playerMap[playerId] || `Jugador ${playerId}`,
               points: 0,
               wins: 0,
               played: 0,
@@ -448,23 +475,86 @@ export default function DashboardPage() {
               games_against: 0,
             };
           }
-          rankingMap[pid].points += 1;
-          rankingMap[pid].played += 1;
-          rankingMap[pid].losses += 1;
-          // Games for/against
-          if (m.winner === "A") {
-            rankingMap[pid].games_for += teamBScore;
-            rankingMap[pid].games_against += teamAScore;
-          } else if (m.winner === "B") {
-            rankingMap[pid].games_for += teamAScore;
-            rankingMap[pid].games_against += teamBScore;
+          rankingMap[playerId].losses += 1;
+          rankingMap[playerId].points += 1;
+          rankingMap[playerId].played += 1;
+          if (normalized.winner === "A") {
+            rankingMap[playerId].games_for += teamBScore;
+            rankingMap[playerId].games_against += teamAScore;
+          } else {
+            rankingMap[playerId].games_for += teamAScore;
+            rankingMap[playerId].games_against += teamBScore;
           }
-        });
-      });
+        }
+      }
 
       setTopRanking(
-        Object.values(rankingMap)
-          .sort((a, b) => {
+        Object.values(rankingMap).sort((a, b) => {
+          if (b.points !== a.points) return b.points - a.points;
+          const diffA = a.games_for - a.games_against;
+          const diffB = b.games_for - b.games_against;
+          if (diffB !== diffA) return diffB - diffA;
+          if (b.games_for !== a.games_for) return b.games_for - a.games_for;
+          return b.wins - a.wins;
+        })
+      );
+    };
+
+    const loadRanking = async () => {
+      try {
+        let query = supabase
+          .from("tournament_rankings")
+          .select("tournament_id, player_id, points, matches_won, matches_lost, games_for, games_against, players(name)");
+
+        if (selectedTournamentId) {
+          query = query.eq("tournament_id", selectedTournamentId);
+        }
+
+        const { data, error } = await query;
+        if (!active) return;
+
+        if (error) {
+          console.error("[dashboard] ranking error:", error);
+          await buildRankingFromMatchesFallback();
+          return;
+        }
+
+        const rankingMap: Record<number, RankingItem> = {};
+
+        for (const row of (data || []) as TournamentRankingRow[]) {
+          const playerId = Number(row.player_id);
+          if (!Number.isFinite(playerId)) continue;
+
+          const relation = Array.isArray(row.players) ? row.players[0] : row.players;
+          const resolvedName =
+            relation?.name ||
+            playerMap[playerId] ||
+            `Jugador ${playerId}`;
+
+          if (!rankingMap[playerId]) {
+            rankingMap[playerId] = {
+              player_id: playerId,
+              name: resolvedName,
+              points: 0,
+              wins: 0,
+              played: 0,
+              losses: 0,
+              games_for: 0,
+              games_against: 0,
+            };
+          }
+
+          rankingMap[playerId].points += Number(row.points) || 0;
+          rankingMap[playerId].wins += Number(row.matches_won) || 0;
+          rankingMap[playerId].losses += Number(row.matches_lost) || 0;
+          rankingMap[playerId].games_for += Number(row.games_for) || 0;
+          rankingMap[playerId].games_against += Number(row.games_against) || 0;
+          rankingMap[playerId].played =
+            rankingMap[playerId].wins + rankingMap[playerId].losses;
+        }
+
+        setTopRanking(
+          Object.values(rankingMap).sort((a, b) => {
             if (b.points !== a.points) return b.points - a.points;
             const diffA = a.games_for - a.games_against;
             const diffB = b.games_for - b.games_against;
@@ -472,16 +562,18 @@ export default function DashboardPage() {
             if (b.games_for !== a.games_for) return b.games_for - a.games_for;
             return b.wins - a.wins;
           })
-      );
-
-      // 6) Alertas inteligentes
-      await calculateAlerts();
-
-      setLoadingDashboard(false);
+        );
+      } catch (error) {
+        console.error("[dashboard] loadRanking error:", error);
+      }
     };
 
-    loadData();
-  }, [calculateAlerts, selectedTournamentId]);
+    void loadRanking();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedTournamentId, playerMap]);
 
 
   useEffect(() => {
@@ -1227,6 +1319,7 @@ export default function DashboardPage() {
                     el.style.marginBottom = "0";
 
                     try {
+                      const { toPng } = await import("html-to-image");
                       const dataUrl = await toPng(el, {
                         cacheBust: true,
                         pixelRatio: 2,

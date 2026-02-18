@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toPng } from "html-to-image";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import toast from "react-hot-toast";
 
 import { supabase } from "../lib/supabase";
@@ -556,6 +554,7 @@ export default function MatchesPage() {
                     el.style.transform = "none";
                     el.style.marginBottom = "0";
                     try {
+                      const { toPng } = await import("html-to-image");
                       const dataUrl = await toPng(el, { cacheBust: true, pixelRatio: 2, width: 480, height: 520 });
                       const link = document.createElement("a");
                       link.download = `Twinco_Partido_${m.id}.png`;

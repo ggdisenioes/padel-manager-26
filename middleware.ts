@@ -9,7 +9,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Protect /super-admin routes server-side
-  if (pathname.startsWith("/super-admin")) {
+  if (pathname.startsWith("/super-admin") || pathname.startsWith("/api/super-admin")) {
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.redirect(new URL("/login", req.url));
     }
@@ -68,5 +68,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/super-admin/:path*", "/api/super-admin/:path*"],
 };

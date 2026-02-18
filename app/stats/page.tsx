@@ -23,6 +23,9 @@ type PlayerWithStats = Player & {
   };
 };
 
+const STATS_CACHE_KEY = "padelx-stats-players-v1";
+const STATS_CACHE_TTL_MS = 60_000;
+
 export default function StatsPage() {
   const { t } = useTranslation();
   const [players, setPlayers] = useState<PlayerWithStats[]>([]);
@@ -35,6 +38,25 @@ export default function StatsPage() {
 
   const fetchPlayersStats = async () => {
     try {
+      if (typeof window !== "undefined") {
+        const cachedRaw = sessionStorage.getItem(STATS_CACHE_KEY);
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw) as {
+              ts: number;
+              players: PlayerWithStats[];
+            };
+            if (Date.now() - cached.ts < STATS_CACHE_TTL_MS) {
+              setPlayers(cached.players || []);
+              setLoading(false);
+              return;
+            }
+          } catch {
+            // cache inválido: continuamos con fetch de red
+          }
+        }
+      }
+
       // Batch fetch: one request for players + stats (avoids N+1 calls)
       const { data: sessionData } = await supabase.auth.getSession();
       const headers: Record<string, string> = {
@@ -45,12 +67,19 @@ export default function StatsPage() {
         headers["Authorization"] = `Bearer ${sessionData.session.access_token}`;
       }
 
-      const response = await fetch("/api/stats/players", { headers, cache: "no-store" });
+      const response = await fetch("/api/stats/players", { headers });
       if (!response.ok) {
         throw new Error("No se pudieron cargar estadísticas");
       }
       const result = await response.json();
-      setPlayers((result.players || []) as PlayerWithStats[]);
+      const nextPlayers = (result.players || []) as PlayerWithStats[];
+      setPlayers(nextPlayers);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(
+          STATS_CACHE_KEY,
+          JSON.stringify({ ts: Date.now(), players: nextPlayers })
+        );
+      }
     } catch (error) {
       console.error("Error fetching stats:", error);
       setPlayers([]);

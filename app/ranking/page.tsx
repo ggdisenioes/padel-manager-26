@@ -31,11 +31,16 @@ export default function RankingPage() {
   const loadRanking = useCallback(async () => {
     setLoading(true);
 
-    // Jugadores aprobados
-    const { data: playerData, error: playerError } = await supabase
-      .from("players")
-      .select("id, name, avatar_url")
-      .eq("is_approved", true);
+    const [{ data: playerData, error: playerError }, { data: tournamentData }] = await Promise.all([
+      supabase
+        .from("players")
+        .select("id, name, avatar_url")
+        .eq("is_approved", true),
+      supabase
+        .from("tournaments")
+        .select("id, name")
+        .order("start_date", { ascending: false }),
+    ]);
 
     if (playerError) {
       console.error("Error cargando jugadores:", playerError);
@@ -44,97 +49,136 @@ export default function RankingPage() {
       return;
     }
 
-    const { data: tournamentData } = await supabase
-      .from("tournaments")
-      .select("id, name")
-      .order("start_date", { ascending: false });
-
     setTournaments(tournamentData || []);
 
-    let matchQuery = supabase
-      .from("matches")
-      .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, tournament_id, score");
+    let rankingsQuery = supabase
+      .from("tournament_rankings")
+      .select("tournament_id, player_id, matches_won, matches_lost, points, games_for, games_against");
 
     if (selectedTournament !== "all") {
-      matchQuery = matchQuery.eq("tournament_id", selectedTournament);
-    } else {
-      // IMPORTANTE: el ranking es POR TORNEO. Los amistosos (tournament_id null) NO cuentan.
-      matchQuery = matchQuery.not("tournament_id", "is", null);
+      rankingsQuery = rankingsQuery.eq("tournament_id", selectedTournament);
     }
 
-    const { data: matches, error: matchError } = await matchQuery;
-
-    if (matchError) {
-      console.error("Error cargando partidos:", matchError);
-      toast.error("No se pudieron cargar los partidos");
-      setLoading(false);
-      return;
-    }
-
-    // Contar partidos jugados, victorias y derrotas por jugador
     const statsMap: Record<
       number,
-      { wins: number; losses: number; played: number; games_for: number; games_against: number }
+      { wins: number; losses: number; played: number; games_for: number; games_against: number; points: number }
     > = {};
 
-    (matches || []).forEach((match: any) => {
-      if (!match.player_1_a || !match.player_2_a || !match.player_1_b || !match.player_2_b) return;
-      if (!match.winner || match.winner === "pending") return;
+    const { data: rankingRows, error: rankingError } = await rankingsQuery;
 
-      const teamA = [match.player_1_a, match.player_2_a];
-      const teamB = [match.player_1_b, match.player_2_b];
+    if (rankingError) {
+      console.warn("Error cargando tournament_rankings, usando fallback:", rankingError);
 
-      const sets = match.score?.split(" ") || [];
-      let gamesA = 0;
-      let gamesB = 0;
+      let matchQuery = supabase
+        .from("matches")
+        .select("winner, player_1_a, player_2_a, player_1_b, player_2_b, tournament_id, score")
+        .not("tournament_id", "is", null);
 
-      sets.forEach((set: string) => {
-        const [a, b] = set.split("-").map(Number);
-        if (!isNaN(a) && !isNaN(b)) {
-          gamesA += a;
-          gamesB += b;
-        }
-      });
-
-      [...teamA, ...teamB].forEach((id: number) => {
-        if (!statsMap[id]) {
-          statsMap[id] = { wins: 0, losses: 0, played: 0, games_for: 0, games_against: 0 };
-        }
-        statsMap[id].played += 1;
-      });
-
-      teamA.forEach((id: number) => {
-        statsMap[id].games_for += gamesA;
-        statsMap[id].games_against += gamesB;
-      });
-
-      teamB.forEach((id: number) => {
-        statsMap[id].games_for += gamesB;
-        statsMap[id].games_against += gamesA;
-      });
-
-      if (match.winner === "A") {
-        teamA.forEach((id: number) => {
-          statsMap[id].wins += 1;
-        });
-        teamB.forEach((id: number) => {
-          statsMap[id].losses += 1;
-        });
+      if (selectedTournament !== "all") {
+        matchQuery = matchQuery.eq("tournament_id", selectedTournament);
       }
 
-      if (match.winner === "B") {
-        teamB.forEach((id: number) => {
-          statsMap[id].wins += 1;
-        });
-        teamA.forEach((id: number) => {
-          statsMap[id].losses += 1;
-        });
+      const { data: matches, error: matchError } = await matchQuery;
+
+      if (matchError) {
+        console.error("Error cargando ranking (fallback):", matchError);
+        toast.error("No se pudo cargar el ranking");
+        setLoading(false);
+        return;
       }
-    });
+
+      (matches || []).forEach((match: any) => {
+        if (!match.player_1_a || !match.player_2_a || !match.player_1_b || !match.player_2_b) return;
+        if (!match.winner || match.winner === "pending") return;
+
+        const teamA = [match.player_1_a, match.player_2_a];
+        const teamB = [match.player_1_b, match.player_2_b];
+
+        const sets = match.score?.split(" ") || [];
+        let gamesA = 0;
+        let gamesB = 0;
+
+        sets.forEach((set: string) => {
+          const [a, b] = set.split("-").map(Number);
+          if (!isNaN(a) && !isNaN(b)) {
+            gamesA += a;
+            gamesB += b;
+          }
+        });
+
+        [...teamA, ...teamB].forEach((id: number) => {
+          if (!statsMap[id]) {
+            statsMap[id] = { wins: 0, losses: 0, played: 0, games_for: 0, games_against: 0, points: 0 };
+          }
+          statsMap[id].played += 1;
+        });
+
+        teamA.forEach((id: number) => {
+          statsMap[id].games_for += gamesA;
+          statsMap[id].games_against += gamesB;
+        });
+
+        teamB.forEach((id: number) => {
+          statsMap[id].games_for += gamesB;
+          statsMap[id].games_against += gamesA;
+        });
+
+        if (match.winner === "A") {
+          teamA.forEach((id: number) => {
+            statsMap[id].wins += 1;
+            statsMap[id].points += 3;
+          });
+          teamB.forEach((id: number) => {
+            statsMap[id].losses += 1;
+            statsMap[id].points += 1;
+          });
+        }
+
+        if (match.winner === "B") {
+          teamB.forEach((id: number) => {
+            statsMap[id].wins += 1;
+            statsMap[id].points += 3;
+          });
+          teamA.forEach((id: number) => {
+            statsMap[id].losses += 1;
+            statsMap[id].points += 1;
+          });
+        }
+      });
+    } else {
+      for (const row of (rankingRows || []) as any[]) {
+        const playerId = Number(row.player_id);
+        if (!Number.isFinite(playerId)) continue;
+        if (!statsMap[playerId]) {
+          statsMap[playerId] = {
+            wins: 0,
+            losses: 0,
+            played: 0,
+            games_for: 0,
+            games_against: 0,
+            points: 0,
+          };
+        }
+        const wins = Number(row.matches_won) || 0;
+        const losses = Number(row.matches_lost) || 0;
+        statsMap[playerId].wins += wins;
+        statsMap[playerId].losses += losses;
+        statsMap[playerId].played += wins + losses;
+        statsMap[playerId].games_for += Number(row.games_for) || 0;
+        statsMap[playerId].games_against += Number(row.games_against) || 0;
+        statsMap[playerId].points += Number(row.points) || 0;
+      }
+    }
 
     const ranking: RankedPlayer[] = (playerData || []).map((p: any) => {
-      const stats = statsMap[p.id] || { wins: 0, losses: 0, played: 0, games_for: 0, games_against: 0 };
-      const points = stats.wins * 3 + stats.losses * 1;
+      const stats = statsMap[p.id] || {
+        wins: 0,
+        losses: 0,
+        played: 0,
+        games_for: 0,
+        games_against: 0,
+        points: 0,
+      };
 
       return {
         id: p.id,
@@ -145,7 +189,7 @@ export default function RankingPage() {
         played: stats.played,
         games_for: stats.games_for,
         games_against: stats.games_against,
-        points,
+        points: stats.points,
       };
     });
 

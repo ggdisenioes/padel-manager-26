@@ -51,12 +51,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Evita duplicar toasts en re-renders
   const lastToastKeyRef = useRef<string>("");
 
-  // 1) Session guard (lo que ya tenías)
   useEffect(() => {
     setMobileOpen(false);
+  }, [pathname]);
 
-    const isAuthPublic = pathname === "/login" || pathname === "/register";
-    if (isAuthPublic) {
+  // 1) Session guard
+  useEffect(() => {
+    if (isAuthPage) {
       sessionStorage.removeItem("unauthorized_redirect");
       setCheckingSession(false);
       return;
@@ -96,7 +97,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
 
     checkSession();
-  }, [pathname, router]);
+  }, [isAuthPage, router]);
 
   // 2) Sidebar slide-in transition after login
   useEffect(() => {

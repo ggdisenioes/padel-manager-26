@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
+import LanguageSelector from "./LanguageSelector";
 import { Toaster } from "react-hot-toast";
 import toast from "react-hot-toast";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -79,8 +80,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       } = await supabaseRef.current.auth.getSession();
 
       if (!session) {
-        router.replace("/login");
-        return;
+        // Retry corto para evitar falsos negativos de sesión en mobile.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const {
+          data: { session: retriedSession },
+        } = await supabaseRef.current.auth.getSession();
+
+        if (!retriedSession) {
+          router.replace("/login");
+          return;
+        }
       }
 
       setCheckingSession(false);
@@ -157,7 +166,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* COLUMNA PRINCIPAL */}
         <div className="flex-1 flex flex-col">
           {/* HEADER MOBILE */}
-          <header className="md:hidden relative flex items-center justify-center px-4 py-4 bg-[#05070b] border-b border-gray-800">
+          <header className="md:hidden fixed inset-x-0 top-0 z-30 relative flex items-center justify-center px-4 py-4 bg-[#05070b]/95 backdrop-blur border-b border-gray-800">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2">
+              <div className="rounded-md border border-white/25 bg-black/30 px-1 py-1">
+                <LanguageSelector />
+              </div>
+            </div>
+
             <div className="text-center">
               <p className="text-[11px] font-extrabold tracking-[0.26em] text-white uppercase">
                 TWINCO
@@ -200,7 +215,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </header>
 
           {/* CONTENIDO */}
-          <div className="flex-1 bg-gray-50">{children}</div>
+          <div className="flex-1 bg-gray-50 pt-[72px] md:pt-0">{children}</div>
         </div>
 
         {/* OVERLAY MOBILE — slide-in transition */}

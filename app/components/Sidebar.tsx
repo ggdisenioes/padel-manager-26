@@ -29,6 +29,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   const { hasFeature, loading: planLoading } = useTenantPlan();
   const { t } = useTranslation();
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
       } else {
         setUser(null);
       }
+      setAuthChecked(true);
     };
 
     checkUser();
@@ -73,6 +75,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
         } else {
           setUser(null);
         }
+        setAuthChecked(true);
       }
     );
 
@@ -92,16 +95,16 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     }
   };
 
-  const handleProtectedNavigation = (
-    e: React.MouseEvent,
-    href: string
-  ) => {
+  const handleProtectedNavigation = (e: React.MouseEvent) => {
+    onLinkClick?.();
+
+    // Evita falsos "sesión no iniciada" mientras Supabase restaura sesión en cliente.
+    if (!authChecked) return;
+
     if (!user) {
       e.preventDefault();
       toast.error(t("auth.loginRequired"));
       router.push("/login");
-    } else {
-      router.push(href);
     }
   };
 
@@ -167,7 +170,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
 
         <Link
           href={item.href}
-          onClick={(e) => handleProtectedNavigation(e, item.href)}
+          onClick={(e) => handleProtectedNavigation(e)}
           className={`relative flex items-center gap-3 px-6 py-3 text-[15px] font-medium transition
             ${active ? "bg-white/10" : "hover:bg-white/5"}
           `}
@@ -274,7 +277,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
           </div>
         )}
 
-        <div className="mt-3 flex items-center justify-center gap-2">
+        <div className="mt-3 hidden items-center justify-center gap-2 md:flex">
           <LanguageSelector />
         </div>
 

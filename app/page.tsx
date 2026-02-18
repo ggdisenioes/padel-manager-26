@@ -3,7 +3,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRole } from "@/hooks/useRole";
@@ -566,31 +566,29 @@ export default function DashboardPage() {
     return { winnerTeam: teamA, loserTeam: teamB, score };
   };
 
-  // Helper: Genera PNG desde el shareCardRef usando html2canvas (devuelve Blob + URL)
+  // Helper: Genera PNG desde el shareCardRef usando html-to-image (mismo enfoque que /matches)
   const generatePngFromShareRef = async () => {
-  if (!shareCardRef.current) return null;
+    if (!shareCardRef.current) return null;
 
-  try {
-    const canvas = await html2canvas(shareCardRef.current, {
-      backgroundColor: "#020617",
-      scale: 2,
-      useCORS: true,
-      foreignObjectRendering: true,
-    } as any);
+    try {
+      const dataUrl = await toPng(shareCardRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        width: 600,
+        height: 600,
+        backgroundColor: "#020617",
+      });
 
-    const blob: Blob | null = await new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/png");
-    });
+      const blob = await (await fetch(dataUrl)).blob();
+      if (!blob) return null;
 
-    if (!blob) return null;
-
-    const url = URL.createObjectURL(blob);
-    return { blob, url };
-  } catch (err) {
-    console.error("Error generando imagen:", err);
-    return null;
-  }
-};
+      const url = URL.createObjectURL(blob);
+      return { blob, url };
+    } catch (err) {
+      console.error("Error generando imagen:", err);
+      return null;
+    }
+  };
 
 
   if (isUser) {

@@ -3,8 +3,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import AppShell from "./components/AppShell";
 import { LanguageProvider } from "./i18n";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "TWINCO Pádel Manager",
@@ -20,7 +19,9 @@ export default function RootLayout({
     <html lang="es">
       <body className="bg-[#05070b] text-gray-900 antialiased">
         <LanguageProvider>
-          <AppShell>{children}</AppShell>
+          <Suspense fallback={null}>
+            <AppShell>{children}</AppShell>
+          </Suspense>
         </LanguageProvider>
       </body>
     </html>

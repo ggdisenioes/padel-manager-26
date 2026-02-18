@@ -165,22 +165,32 @@ export default function RankingPage() {
   }, [selectedTournament]);
 
   useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     loadRanking();
 
-    // Recalcular ranking en tiempo real cuando cambien los partidos
+    // Recalcular ranking en tiempo real, con debounce para evitar ráfagas.
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void loadRanking();
+      }, 400);
+    };
+
     const channel = supabase
       .channel("public:matches-ranking")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "matches" },
-        () => {
-          loadRanking();
-          toast.success("Ranking actualizado");
-        }
+        scheduleRefresh
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [loadRanking]);

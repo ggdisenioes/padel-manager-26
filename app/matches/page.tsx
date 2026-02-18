@@ -76,13 +76,44 @@ export default function MatchesPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    let active = true;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
     const loadData = async () => {
+      if (!active) return;
       setLoading(true);
 
-      const { data: playersData, error: playersError } = await supabase
-        .from("players")
-        .select("id, name")
-        .order("name");
+      const [{ data: playersData, error: playersError }, { data: matchesData, error: matchError }, { data: tournamentsData }] =
+        await Promise.all([
+          supabase.from("players").select("id, name").order("name"),
+          supabase
+            .from("matches")
+            .select(`
+              id,
+              start_time,
+              tournament_id,
+              round_name,
+              score,
+              winner,
+              court,
+              place,
+              player_1_a_id,
+              player_2_a_id,
+              player_1_b_id,
+              player_2_b_id,
+              player_1_a:players!matches_player_1_a_fkey ( id, name ),
+              player_2_a:players!matches_player_2_a_fkey ( id, name ),
+              player_1_b:players!matches_player_1_b_fkey ( id, name ),
+              player_2_b:players!matches_player_2_b_fkey ( id, name )
+            `)
+            .order("start_time", { ascending: true })
+            .returns<Match[]>(),
+          supabase
+            .from("tournaments")
+            .select("id, name, category")
+            .order("name"),
+        ]);
+      if (!active) return;
 
       if (playersError) {
         console.error(playersError);
@@ -97,29 +128,6 @@ export default function MatchesPage() {
       for (const [k, v] of playersMap.entries()) playersMapObj[k] = v;
       setPlayersMapObj(playersMapObj);
 
-      const { data: matchesData, error: matchError } = await supabase
-        .from("matches")
-        .select(`
-          id,
-          start_time,
-          tournament_id,
-          round_name,
-          score,
-          winner,
-          court,
-          place,
-          player_1_a_id,
-          player_2_a_id,
-          player_1_b_id,
-          player_2_b_id,
-          player_1_a:players!matches_player_1_a_fkey ( id, name ),
-          player_2_a:players!matches_player_2_a_fkey ( id, name ),
-          player_1_b:players!matches_player_1_b_fkey ( id, name ),
-          player_2_b:players!matches_player_2_b_fkey ( id, name )
-        `)
-        .order("start_time", { ascending: true })
-        .returns<Match[]>();
-
       if (matchError) {
         console.error(matchError);
         toast.error(t("matches.errorLoading"));
@@ -127,11 +135,6 @@ export default function MatchesPage() {
         setLoading(false);
         return;
       }
-
-      const { data: tournamentsData } = await supabase
-        .from("tournaments")
-        .select("id, name, category")
-        .order("name");
 
       setTournaments(tournamentsData ?? []);
 
@@ -157,19 +160,32 @@ export default function MatchesPage() {
       setLoading(false);
     };
 
+    const scheduleReload = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        void loadData();
+      }, 350);
+    };
+
     loadData();
 
-    // Realtime: cuando cambie un partido, refrescamos la lista
+    // Realtime: debounce para evitar múltiples recargas en ráfaga.
     const channel = supabase
       .channel("matches_realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "matches" },
-        () => loadData()
+        scheduleReload
       )
       .subscribe();
 
     return () => {
+      active = false;
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
       supabase.removeChannel(channel);
     };
   }, []);

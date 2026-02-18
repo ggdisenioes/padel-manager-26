@@ -11,6 +11,7 @@ import { supabase } from "../lib/supabase";
 import { useRole } from "../hooks/useRole";
 import MatchCard from "../components/matches/MatchCard";
 import { formatDateMadrid, formatTimeMadrid } from "@/lib/dates";
+import { useTranslation } from "../i18n";
 
 type PlayerRef = {
   id: number;
@@ -51,6 +52,7 @@ type View = "pending" | "finished" | "all";
 export default function MatchesPage() {
   const { isAdmin, isManager, loading: roleLoading } = useRole();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
 
   const [matches, setMatches] = useState<Match[]>([]);
   const [playersMapObj, setPlayersMapObj] = useState<Record<number, string>>({});
@@ -84,7 +86,7 @@ export default function MatchesPage() {
 
       if (playersError) {
         console.error(playersError);
-        toast.error("No se pudieron cargar los jugadores.");
+        toast.error(t("players.errorLoading"));
       }
 
       const playersMap = new Map<number, string>(
@@ -120,7 +122,7 @@ export default function MatchesPage() {
 
       if (matchError) {
         console.error(matchError);
-        toast.error("No se pudieron cargar los partidos.");
+        toast.error(t("matches.errorLoading"));
         setMatches([]);
         setLoading(false);
         return;
@@ -192,9 +194,7 @@ export default function MatchesPage() {
 
   // 1️⃣ AGREGAR FUNCIÓN handleDeleteMatch
   const handleDeleteMatch = async (matchId: number) => {
-    const confirmed = window.confirm(
-      "¿Estás seguro? El partido se eliminará definitivamente y quedará registrado en los logs."
-    );
+    const confirmed = window.confirm(t("matches.deleteConfirm"));
     if (!confirmed) return;
 
     const { error } = await supabase
@@ -204,11 +204,11 @@ export default function MatchesPage() {
 
     if (error) {
       console.error(error);
-      toast.error("No se pudo eliminar el partido");
+      toast.error(t("matches.errorDeleting"));
       return;
     }
 
-    toast.success("Partido eliminado");
+    toast.success(t("matches.deleted"));
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
   };
 
@@ -253,7 +253,7 @@ export default function MatchesPage() {
   if (roleLoading) {
     return (
       <main className="max-w-5xl mx-auto p-6">
-        <p className="text-gray-500 animate-pulse">Cargando permisos…</p>
+        <p className="text-gray-500 animate-pulse">{t("common.loading")}</p>
       </main>
     );
   }
@@ -261,33 +261,33 @@ export default function MatchesPage() {
   return (
     <main className="max-w-5xl mx-auto p-6 space-y-6">
       <header className="flex flex-wrap gap-2 items-center justify-between">
-        <h1 className="text-2xl font-bold">Partidos</h1>
+        <h1 className="text-2xl font-bold">{t("matches.title")}</h1>
 
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => setView("pending")}
             className={`px-3 py-1 rounded border ${view === "pending" ? "bg-black text-white" : "bg-white"}`}
           >
-            Pendientes
+            {t("matches.filterPending")}
           </button>
           <button
             onClick={() => setView("finished")}
             className={`px-3 py-1 rounded border ${view === "finished" ? "bg-black text-white" : "bg-white"}`}
           >
-            Finalizados
+            {t("matches.filterCompleted")}
           </button>
           <button
             onClick={() => setView("all")}
             className={`px-3 py-1 rounded border ${view === "all" ? "bg-black text-white" : "bg-white"}`}
           >
-            Todos
+            {t("matches.filterAll")}
           </button>
           {(isAdmin || isManager) && (
             <Link
               href="/matches/create"
               className="bg-green-600 text-white px-4 py-1 rounded border border-green-600 hover:bg-green-700 transition text-sm font-semibold"
             >
-              + Crear partido
+              + {t("matches.createManual")}
             </Link>
           )}
           {(isAdmin || isManager) && (
@@ -295,7 +295,7 @@ export default function MatchesPage() {
               href="/matches/friendly/create"
               className="bg-green-600 text-white px-4 py-1 rounded border border-green-600 hover:bg-green-700 transition text-sm font-semibold"
             >
-              + Crear partido amistoso
+              + {t("matches.createFriendly")}
             </Link>
           )}
         </div>
@@ -303,22 +303,22 @@ export default function MatchesPage() {
 
       <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">
-          Filtros
+          {t("matches.filterPanel")}
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Torneo */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">
-              Torneo
+              {t("matches.filterTournamentLabel")}
             </label>
             <select
               value={filterTournament}
               onChange={(e) => setFilterTournament(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="all">Todos</option>
-              <option value="friendly">Amistosos</option>
+              <option value="all">{t("matches.filterAll")}</option>
+              <option value="friendly">{t("matches.filterFriendly")}</option>
               {tournaments.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -330,47 +330,47 @@ export default function MatchesPage() {
           {/* Ronda / Fase */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">
-              Ronda / Fase
+              {t("matches.filterRoundPhase")}
             </label>
             <select
               value={filterRound}
               onChange={(e) => setFilterRound(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="all">Todas</option>
-              <option value="grupos">Grupos</option>
-              <option value="cuartos">Cuartos</option>
-              <option value="semifinal">Semifinal</option>
-              <option value="final">Final</option>
-              <option value="amistoso">Amistoso</option>
+              <option value="all">{t("matches.filterRoundAll")}</option>
+              <option value="grupos">{t("matches.filterRoundGroups")}</option>
+              <option value="cuartos">{t("matches.filterRoundQuarterfinals")}</option>
+              <option value="semifinal">{t("matches.filterRoundSemifinal")}</option>
+              <option value="final">{t("matches.filterRoundFinal")}</option>
+              <option value="amistoso">{t("matches.filterRoundFriendly")}</option>
             </select>
           </div>
 
           {/* Categoría */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">
-              Categoría
+              {t("matches.filterCategory")}
             </label>
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="all">Todas</option>
-              <option value="grupos">Grupos</option>
-              <option value="cuartos">Cuartos</option>
-              <option value="semifinal">Semifinal</option>
-              <option value="final">Final</option>
-              <option value="amistoso">Amistoso</option>
+              <option value="all">{t("matches.filterRoundAll")}</option>
+              <option value="grupos">{t("matches.filterRoundGroups")}</option>
+              <option value="cuartos">{t("matches.filterRoundQuarterfinals")}</option>
+              <option value="semifinal">{t("matches.filterRoundSemifinal")}</option>
+              <option value="final">{t("matches.filterRoundFinal")}</option>
+              <option value="amistoso">{t("matches.filterRoundFriendly")}</option>
             </select>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <p className="text-gray-500">Cargando partidos…</p>
+        <p className="text-gray-500">{t("matches.loading")}</p>
       ) : filteredMatches.length === 0 ? (
-        <p className="text-gray-500">No hay partidos para mostrar.</p>
+        <p className="text-gray-500">{t("matches.emptyForFilters")}</p>
       ) : (
         <div className="space-y-4">
           {filteredMatches.map((m) => (
@@ -397,7 +397,7 @@ export default function MatchesPage() {
                     onClick={(e) => e.stopPropagation()}
                     className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition"
                   >
-                    Editar partido
+                    {t("matches.editTitle")}
                   </Link>
 
                   <Link
@@ -405,7 +405,7 @@ export default function MatchesPage() {
                     onClick={(e) => e.stopPropagation()}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
                   >
-                    {isPlayed(m) ? "Editar resultado" : "Cargar resultado"}
+                    {isPlayed(m) ? t("shareModal.editResult") : t("matches.loadResult")}
                   </Link>
 
                   {isAdmin && (
@@ -417,7 +417,7 @@ export default function MatchesPage() {
                       }}
                       className="bg-red-100 text-red-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-red-200 transition"
                     >
-                      Eliminar
+                      {t("common.delete")}
                     </button>
                   )}
                 </div>
@@ -437,8 +437,8 @@ export default function MatchesPage() {
           : `${m.player_1_a?.name || ""}${m.player_2_a ? " y " + m.player_2_a.name : ""}`.trim();
         const score = formatScoreForDisplay(m.score);
         const matchType = m.tournament_id
-          ? (tournaments.find(t => t.id === m.tournament_id)?.name || "Torneo")
-          : "Partido Amistoso";
+          ? (tournaments.find(t => t.id === m.tournament_id)?.name || t("matches.typeTournament"))
+          : t("matches.friendlyMatchLabel");
         const dateStr = m.start_time ? formatDateMadrid(m.start_time) : "";
         const timeStr = m.start_time ? formatTimeMadrid(m.start_time) : "";
         const courtPlace = [m.court, m.place].filter(Boolean).join(" · ");
@@ -491,7 +491,7 @@ export default function MatchesPage() {
                     {/* Winners */}
                     <div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#4ade80", letterSpacing: 3, marginBottom: 6 }}>
-                        GANADORES
+                        {t("matches.shareCardWinners").toUpperCase()}
                       </div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: "#ffffff" }}>
                         {winnerTeam}
@@ -506,7 +506,7 @@ export default function MatchesPage() {
                     {/* Losers */}
                     <div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 3, marginBottom: 6 }}>
-                        PERDEDORES
+                        {t("matches.shareCardLosers").toUpperCase()}
                       </div>
                       <div style={{ fontSize: 16, color: "#999" }}>
                         {loserTeam}
@@ -546,10 +546,10 @@ export default function MatchesPage() {
                       link.download = `Twinco_Partido_${m.id}.png`;
                       link.href = dataUrl;
                       link.click();
-                      toast.success("Imagen descargada");
+                      toast.success(t("matches.imageDownloaded"));
                     } catch (err) {
                       console.error("toPng error:", err);
-                      toast.error("Error al generar imagen");
+                      toast.error(t("shareModal.errorCreating"));
                     } finally {
                       el.style.transform = origTransform;
                       el.style.marginBottom = origMargin;
@@ -557,7 +557,7 @@ export default function MatchesPage() {
                   }}
                   className="flex-1 bg-gray-900 text-white py-2.5 rounded-xl font-semibold hover:bg-black transition text-sm"
                 >
-                  Descargar imagen
+                  {t("shareModal.download")}
                 </button>
               </div>
 
@@ -565,7 +565,7 @@ export default function MatchesPage() {
                 onClick={() => setOpenResultMatch(null)}
                 className="w-full border border-gray-200 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition"
               >
-                Cerrar
+                {t("shareModal.close")}
               </button>
             </div>
           </div>

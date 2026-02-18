@@ -47,10 +47,23 @@ function flattenStrings(
 
 function translatePreservingWhitespace(
   input: string,
-  map: Map<string, string>
+  map: Map<string, string>,
+  entries: Array<[string, string]>
 ): string {
   const exact = map.get(input);
   if (exact !== undefined) return exact;
+
+  // Fallback: replace known dictionary phrases inside longer strings
+  // e.g. "🎯 Cargar resultados" -> "🎯 Load results"
+  let partial = input;
+  let changed = false;
+  for (const [from, to] of entries) {
+    if (from.length < 4) continue;
+    if (!partial.includes(from)) continue;
+    partial = partial.split(from).join(to);
+    changed = true;
+  }
+  if (changed) return partial;
 
   const trimmed = input.trim();
   if (!trimmed) return input;
@@ -105,7 +118,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       if (!enValue || esValue === enValue) continue;
       map.set(esValue, enValue);
     }
-    return map;
+    const entries = Array.from(map.entries()).sort(
+      (a, b) => b[0].length - a[0].length
+    );
+    return { map, entries };
   }, []);
 
   useEffect(() => {
@@ -156,7 +172,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
           const original = originalTextRef.current.get(textNode) ?? "";
           const nextValue =
             locale === "en"
-              ? translatePreservingWhitespace(original, domTranslationMap)
+              ? translatePreservingWhitespace(
+                  original,
+                  domTranslationMap.map,
+                  domTranslationMap.entries
+                )
               : original;
           if (textNode.nodeValue !== nextValue) {
             textNode.nodeValue = nextValue;
@@ -180,7 +200,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
             const original = attrStore[attr];
             const nextValue =
               locale === "en"
-                ? translatePreservingWhitespace(original, domTranslationMap)
+                ? translatePreservingWhitespace(
+                    original,
+                    domTranslationMap.map,
+                    domTranslationMap.entries
+                  )
                 : original;
             if (currentValue !== nextValue) {
               el.setAttribute(attr, nextValue);

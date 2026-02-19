@@ -59,6 +59,14 @@ type AlertItem = {
   actionHref?: string;
 };
 
+type PendingApprovalUser = {
+  id: string;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string | null;
+};
+
 // --- Dashboard extra types ---
 type RankingItem = {
   player_id: number;
@@ -119,6 +127,11 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const { isAdmin, isManager } = useRole();
   const isUser = !isAdmin && !isManager;
+  const canManageUsers = isAdmin || isManager;
+  const [pendingApprovalUsers, setPendingApprovalUsers] = useState<PendingApprovalUser[]>([]);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const [overdueMatchesCount, setOverdueMatchesCount] = useState(0);
+  const [actingPendingUserId, setActingPendingUserId] = useState<string | null>(null);
 
   const [topRanking, setTopRanking] = useState<RankingItem[]>([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
@@ -238,6 +251,30 @@ export default function DashboardPage() {
     [t]
   );
 
+  const loadPendingApprovalUsers = useCallback(async () => {
+    if (!canManageUsers) {
+      setPendingApprovalUsers([]);
+      setPendingApprovalCount(0);
+      return;
+    }
+
+    const { data, count, error } = await supabase
+      .from("profiles")
+      .select("id,email,first_name,last_name,created_at", { count: "exact" })
+      .eq("approval_status", "pending")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true })
+      .limit(4);
+
+    if (error) {
+      console.error("[dashboard] pending users error:", error);
+      return;
+    }
+
+    setPendingApprovalUsers((data as PendingApprovalUser[]) || []);
+    setPendingApprovalCount(count || 0);
+  }, [canManageUsers]);
+
   useEffect(() => {
     let active = true;
 
@@ -329,6 +366,7 @@ export default function DashboardPage() {
         setUpcomingMatches((pendingMatches || []).map((m: any) => normalizePlayersFromIds(m)));
         setRecentResults((finishedMatches || []).map((m: any) => normalizePlayersFromIds(m)));
         setRecentLogs(logs || []);
+        setOverdueMatchesCount(overdueCount || 0);
 
         const days: { key: string; label: string }[] = [];
         for (let i = 0; i < 7; i++) {
@@ -373,6 +411,8 @@ export default function DashboardPage() {
             player_2_b_id?: number | null;
           }>,
         });
+
+        await loadPendingApprovalUsers();
       } catch (error) {
         console.error("[dashboard] loadData error:", error);
       } finally {
@@ -385,7 +425,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [calculateAlerts]);
+  }, [calculateAlerts, loadPendingApprovalUsers]);
 
   useEffect(() => {
     let active = true;
@@ -651,6 +691,35 @@ export default function DashboardPage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const getPendingUserDisplayName = (user: PendingApprovalUser) => {
+    const full = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+    return full || user.email || user.id;
+  };
+
+  const handlePendingUserAction = async (
+    userId: string,
+    action: "approve" | "reject"
+  ) => {
+    setActingPendingUserId(userId);
+    try {
+      const rpcName = action === "approve" ? "approve_user" : "reject_user";
+      const { error } = await supabase.rpc(rpcName, { p_user_id: userId });
+      if (error) throw error;
+
+      toast.success(
+        action === "approve"
+          ? t("dashboard.userApproved")
+          : t("dashboard.userRejected")
+      );
+      await loadPendingApprovalUsers();
+    } catch (error) {
+      console.error("[dashboard] pending user action error:", error);
+      toast.error(t("dashboard.userActionError"));
+    } finally {
+      setActingPendingUserId(null);
+    }
+  };
 
 
   const getPlayerName = (id: number | null) =>
@@ -1070,6 +1139,143 @@ export default function DashboardPage() {
 
           {/* COLUMNA DERECHA */}
           <aside className="lg:col-span-4 space-y-6">
+            {/* CENTRO DE TAREAS */}
+            {canManageUsers && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                    {t("dashboard.taskCenter")}
+                  </h2>
+                  <span className="text-xs font-semibold text-gray-500">
+                    {pendingApprovalCount + countPendingMatches + overdueMatchesCount}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2 mb-4">
+                  <Link
+                    href="/admin/users"
+                    className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 flex items-center justify-between"
+                  >
+                    <span className="text-xs font-semibold text-indigo-700">
+                      {t("dashboard.pendingUserRequests")}
+                    </span>
+                    <span className="text-xs font-bold text-indigo-800">{pendingApprovalCount}</span>
+                  </Link>
+                  <Link
+                    href="/matches?status=pending"
+                    className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 flex items-center justify-between"
+                  >
+                    <span className="text-xs font-semibold text-yellow-700">
+                      {t("dashboard.pendingMatchesTitle")}
+                    </span>
+                    <span className="text-xs font-bold text-yellow-800">{countPendingMatches}</span>
+                  </Link>
+                  <Link
+                    href="/matches?status=pending"
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 flex items-center justify-between"
+                  >
+                    <span className="text-xs font-semibold text-red-700">
+                      {t("dashboard.overdueMatches")}
+                    </span>
+                    <span className="text-xs font-bold text-red-800">{overdueMatchesCount}</span>
+                  </Link>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      {t("dashboard.pendingUserRequests")}
+                    </p>
+                    <Link
+                      href="/admin/users"
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+                    >
+                      {t("dashboard.managePendingUsers")} →
+                    </Link>
+                  </div>
+
+                  {pendingApprovalUsers.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-500">
+                      {t("dashboard.noPendingUserRequests")}
+                    </p>
+                  ) : (
+                    pendingApprovalUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="rounded-lg border border-gray-200 p-3 space-y-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {getPendingUserDisplayName(user)}
+                            </p>
+                            <p className="text-[11px] text-gray-500 truncate">
+                              {user.email || user.id}
+                            </p>
+                          </div>
+                          {user.created_at && (
+                            <span className="text-[11px] text-gray-400 shrink-0">
+                              {formatDateMadrid(user.created_at)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handlePendingUserAction(user.id, "approve")}
+                            disabled={actingPendingUserId === user.id}
+                            className="flex-1 rounded-md bg-green-600 text-white py-1.5 text-xs font-semibold hover:bg-green-700 transition disabled:opacity-50"
+                          >
+                            {t("admin.playersApproval.approve")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handlePendingUserAction(user.id, "reject")}
+                            disabled={actingPendingUserId === user.id}
+                            className="flex-1 rounded-md bg-red-600 text-white py-1.5 text-xs font-semibold hover:bg-red-700 transition disabled:opacity-50"
+                          >
+                            {t("admin.playersApproval.reject")}
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    {t("dashboard.readyToScore")}
+                  </p>
+                  {upcomingMatches.slice(0, 3).map((m) => (
+                    <div
+                      key={m.id}
+                      className="rounded-lg border border-gray-200 p-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-800 truncate">
+                          {buildTeamNameFromIds(m.player_1_a, m.player_2_a)}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {buildTeamNameFromIds(m.player_1_b, m.player_2_b)}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/matches/score/${m.id}`}
+                        className="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition"
+                      >
+                        {t("matches.loadResult")}
+                      </Link>
+                    </div>
+                  ))}
+                  {upcomingMatches.length === 0 && (
+                    <p className="rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-500">
+                      {t("dashboard.noPendingMatches")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ACCIONES RÁPIDAS */}
             {(isAdmin || isManager) && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">

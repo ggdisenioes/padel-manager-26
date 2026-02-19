@@ -47,6 +47,7 @@ export default function AdminUsersPage() {
   const [rows, setRows] = useState<ProfileRow[]>([]);
   const [tab, setTab] = useState<TabKey>("pending");
   const [players, setPlayers] = useState<PlayerOption[]>([]);
+  const [canDeleteUsers, setCanDeleteUsers] = useState(false);
 
   const filtered = useMemo(() => {
     if (tab === "all") return rows;
@@ -80,6 +81,7 @@ export default function AdminUsersPage() {
     if (userErr || !user) {
       setLoading(false);
       setCanAccess(false);
+      setCanDeleteUsers(false);
       toast.error("No se pudo leer tu sesión.");
       return;
     }
@@ -96,6 +98,7 @@ export default function AdminUsersPage() {
       console.warn("[admin/users] could not read my profile", { meErr, userId: user.id });
       setLoading(false);
       setCanAccess(false);
+      setCanDeleteUsers(false);
       toast.error(
         "No se pudo determinar tu club (tenant). Verificá que exista tu fila en public.profiles y que tenga tenant_id asignado."
       );
@@ -104,18 +107,21 @@ export default function AdminUsersPage() {
 
     const role = (me.role ?? "").toString().toLowerCase();
     const allowed = role === "admin" || role === "manager";
+    setCanDeleteUsers(role === "admin");
 
     setTenantId(me.tenant_id ?? null);
     setCanAccess(allowed);
 
     if (!allowed) {
       setRows([]);
+      setCanDeleteUsers(false);
       setLoading(false);
       return;
     }
 
     if (!me.tenant_id) {
       setRows([]);
+      setCanDeleteUsers(false);
       setLoading(false);
       toast.error("Tu perfil no tiene tenant_id asignado.");
       return;
@@ -171,6 +177,11 @@ export default function AdminUsersPage() {
   };
 
   const softDelete = async (userId: string) => {
+    if (!canDeleteUsers) {
+      toast.error("Solo admins pueden eliminar usuarios.");
+      return;
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({ active: false, deleted_at: new Date().toISOString() })
@@ -319,7 +330,7 @@ export default function AdminUsersPage() {
           filtered.map((u) => {
             const status = statusFromRow(u);
             const isMe = meId === u.id;
-            const isAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
+            const isTargetAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
             const linkedPlayerId = userPlayerMap[u.id] ?? null;
 
             // Jugadores disponibles: sin vincular + el actual
@@ -340,7 +351,7 @@ export default function AdminUsersPage() {
                         Vos
                       </span>
                     )}
-                    {isAdmin && (
+                    {isTargetAdmin && (
                       <span className="text-[10px] px-2 py-1 rounded-full bg-purple-100 text-purple-700">
                         Admin
                       </span>
@@ -361,7 +372,7 @@ export default function AdminUsersPage() {
 
                 <div className="md:col-span-1">
                   <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
-                  {isAdmin ? (
+                  {isTargetAdmin ? (
                     <span className="text-sm text-gray-700">admin</span>
                   ) : (
                     <select
@@ -469,11 +480,11 @@ export default function AdminUsersPage() {
                       ) : (
                         <button
                           onClick={() => setActive(u.id, false)}
-                          disabled={isMe || isAdmin}
+                          disabled={isMe || isTargetAdmin}
                           title={
                             isMe
                               ? "No podés deshabilitarte a vos mismo"
-                              : isAdmin
+                              : isTargetAdmin
                               ? "No se deshabilita el admin principal desde aquí"
                               : ""
                           }
@@ -483,14 +494,14 @@ export default function AdminUsersPage() {
                         </button>
                       )}
 
-                      {!u.deleted_at && u.active !== false && (
+                      {canDeleteUsers && !u.deleted_at && u.active !== false && (
                         <button
                           onClick={() => softDelete(u.id)}
-                          disabled={isMe || isAdmin}
+                          disabled={isMe || isTargetAdmin}
                           title={
                             isMe
                               ? "No podés eliminarte a vos mismo"
-                              : isAdmin
+                              : isTargetAdmin
                               ? "No se elimina el admin principal desde aquí"
                               : "Eliminar = deshabilitar (reversible)"
                           }

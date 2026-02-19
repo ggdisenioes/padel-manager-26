@@ -237,6 +237,11 @@ export default function AdminManagementPage() {
 
   // Eliminar usuario
   const handleDeleteUser = async (userId: string, email: string) => {
+    if (!isAdmin) {
+      toast.error("Solo admins pueden eliminar usuarios");
+      return;
+    }
+
     if (userId === currentUserId) {
       toast.error("No puedes eliminarte a ti mismo");
       return;
@@ -556,14 +561,16 @@ export default function AdminManagementPage() {
                                 🔑 Contraseña
                               </button>
                             )}
-                            <button
-                              onClick={() =>
-                                handleDeleteUser(user.id, user.email || "usuario")
-                              }
-                              className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
-                            >
-                              Eliminar
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() =>
+                                  handleDeleteUser(user.id, user.email || "usuario")
+                                }
+                                className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                              >
+                                Eliminar
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

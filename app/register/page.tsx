@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
+import { getFirstPasswordError, getPasswordRuleStatuses } from "../lib/password-policy";
 
 type Tenant = {
   id: string;
@@ -42,6 +43,11 @@ export default function RegisterPage() {
         return true;
       });
   }, [tenants]);
+
+  const passwordRuleStatuses = useMemo(
+    () => getPasswordRuleStatuses(password),
+    [password]
+  );
 
   useEffect(() => {
     const loadTenants = async () => {
@@ -95,8 +101,9 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 8) {
-      toast.error("La contraseña debe tener al menos 8 caracteres.");
+    const passwordError = getFirstPasswordError(password);
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
 
@@ -213,6 +220,16 @@ export default function RegisterPage() {
               placeholder="Mínimo 8 caracteres"
               autoComplete="new-password"
             />
+            <ul className="mt-2 space-y-1">
+              {passwordRuleStatuses.map((rule) => (
+                <li
+                  key={rule.key}
+                  className={`text-xs ${rule.ok ? "text-green-700" : "text-gray-500"}`}
+                >
+                  {rule.ok ? "[OK]" : "[ ]"} {rule.label}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div>

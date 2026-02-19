@@ -7,8 +7,7 @@ import { useRole } from "../../hooks/useRole";
 import Link from "next/link";
 import Card from "../../components/Card";
 import { createUserSchema } from "../../lib/validation";
-import { z } from "zod";
-import { useTranslation } from "../../i18n";
+import { getFirstPasswordError, getPasswordRuleStatuses } from "../../lib/password-policy";
 
 type TabType = "create" | "manage" | "logs";
 
@@ -62,6 +61,15 @@ export default function AdminManagementPage() {
   const [changingPasswordUserId, setChangingPasswordUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const createPasswordRuleStatuses = useMemo(
+    () => getPasswordRuleStatuses(createForm.password),
+    [createForm.password]
+  );
+  const changePasswordRuleStatuses = useMemo(
+    () => getPasswordRuleStatuses(newPassword),
+    [newPassword]
+  );
 
   // Protección
   if (!roleLoading && !isAdmin && !isManager) {
@@ -195,20 +203,9 @@ export default function AdminManagementPage() {
       return;
     }
 
-    // Validar password
-    try {
-      const schema = z.object({
-        password: z.string()
-          .min(8, "Mínimo 8 caracteres")
-          .regex(/[A-Z]/, "Debe contener una mayúscula")
-          .regex(/[a-z]/, "Debe contener una minúscula")
-          .regex(/[0-9]/, "Debe contener un número")
-          .regex(/[!@#$%^&*()_+\-=\[\]{};:'",.<>?/\\|`~]/, "Debe contener un carácter especial"),
-      });
-
-      schema.parse({ password: newPassword });
-    } catch (error: any) {
-      toast.error(error.errors?.[0]?.message || "Contraseña inválida");
+    const passwordError = getFirstPasswordError(newPassword);
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
 
@@ -286,16 +283,19 @@ export default function AdminManagementPage() {
   };
 
   return (
-    <main className="flex-1 p-8 overflow-y-auto">
+    <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Administración</h1>
-        <p className="text-gray-600 mb-6">Gestiona usuarios, crea nuevas cuentas y revisa logs</p>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-2">Administración</h1>
+        <p className="text-sm sm:text-base text-gray-600 mb-6">
+          Gestiona usuarios, crea nuevas cuentas y revisa logs
+        </p>
 
         {/* TABS */}
-        <div className="flex gap-4 mb-6 border-b border-gray-200">
+        <div className="mb-6 -mx-1 px-1 overflow-x-auto border-b border-gray-200">
+          <div className="min-w-max flex gap-2 sm:gap-4">
           <button
             onClick={() => setActiveTab("manage")}
-            className={`px-4 py-3 font-semibold border-b-2 transition ${
+            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
               activeTab === "manage"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-gray-600 hover:text-gray-800"
@@ -305,7 +305,7 @@ export default function AdminManagementPage() {
           </button>
           <button
             onClick={() => setActiveTab("create")}
-            className={`px-4 py-3 font-semibold border-b-2 transition ${
+            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
               activeTab === "create"
                 ? "border-blue-600 text-blue-600"
                 : "border-transparent text-gray-600 hover:text-gray-800"
@@ -316,7 +316,7 @@ export default function AdminManagementPage() {
           {isAdmin && (
             <button
               onClick={() => setActiveTab("logs")}
-              className={`px-4 py-3 font-semibold border-b-2 transition ${
+              className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
                 activeTab === "logs"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-gray-600 hover:text-gray-800"
@@ -325,6 +325,7 @@ export default function AdminManagementPage() {
               📋 Logs
             </button>
           )}
+          </div>
         </div>
 
         {/* CONTENT */}
@@ -334,8 +335,8 @@ export default function AdminManagementPage() {
           <>
             {/* TAB: CREAR USUARIO */}
             {activeTab === "create" && (
-              <Card className="p-6 max-w-2xl">
-                <h2 className="text-xl font-bold mb-4">Crear nuevo usuario</h2>
+              <Card className="max-w-2xl p-4 sm:p-6">
+                <h2 className="text-lg sm:text-xl font-bold mb-4">Crear nuevo usuario</h2>
                 <form onSubmit={handleCreateUser} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Email</label>
@@ -361,6 +362,16 @@ export default function AdminManagementPage() {
                       placeholder="Mín. 8 caracteres, mayúscula, número, símbolo"
                       required
                     />
+                    <ul className="mt-2 space-y-1">
+                      {createPasswordRuleStatuses.map((rule) => (
+                        <li
+                          key={rule.key}
+                          className={`text-xs ${rule.ok ? "text-green-700" : "text-gray-500"}`}
+                        >
+                          {rule.ok ? "[OK]" : "[ ]"} {rule.label}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Rol</label>
@@ -396,11 +407,11 @@ export default function AdminManagementPage() {
                   <p className="text-gray-500">No hay usuarios</p>
                 ) : (
                   users.map((user) => (
-                    <Card key={user.id} className="p-4">
+                    <Card key={user.id} className="p-4 sm:p-5">
                       {editingUserId === user.id ? (
                         // MODO EDICIÓN
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <input
                               type="text"
                               value={editForm.first_name}
@@ -420,7 +431,7 @@ export default function AdminManagementPage() {
                               className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <select
                               value={editForm.role}
                               onChange={(e) =>
@@ -447,17 +458,17 @@ export default function AdminManagementPage() {
                               <span className="text-sm">Activo</span>
                             </label>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
                             <button
                               onClick={() => handleEditUser(user.id)}
                               disabled={savingEdit}
-                              className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition"
+                              className="w-full sm:flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition"
                             >
                               {savingEdit ? "Guardando..." : "Guardar"}
                             </button>
                             <button
                               onClick={() => setEditingUserId(null)}
-                              className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition"
+                              className="w-full sm:flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition"
                             >
                               Cancelar
                             </button>
@@ -466,7 +477,9 @@ export default function AdminManagementPage() {
                       ) : changingPasswordUserId === user.id ? (
                         // MODO CAMBIAR CONTRASEÑA (solo admin)
                         <div className="space-y-3">
-                          <p className="text-sm font-semibold">Cambiar contraseña de {user.email}</p>
+                          <p className="text-sm font-semibold break-words">
+                            Cambiar contraseña de {user.email}
+                          </p>
                           <input
                             type="password"
                             value={newPassword}
@@ -474,11 +487,21 @@ export default function AdminManagementPage() {
                             placeholder="Nueva contraseña (8+ chars, mayúscula, número, símbolo)"
                             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
-                          <div className="flex gap-2">
+                          <ul className="space-y-1">
+                            {changePasswordRuleStatuses.map((rule) => (
+                              <li
+                                key={rule.key}
+                                className={`text-xs ${rule.ok ? "text-green-700" : "text-gray-500"}`}
+                              >
+                                {rule.ok ? "[OK]" : "[ ]"} {rule.label}
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="flex flex-col sm:flex-row gap-2">
                             <button
                               onClick={() => handleChangePassword(user.id, user.email || "usuario")}
                               disabled={changingPassword || !newPassword}
-                              className="flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition"
+                              className="w-full sm:flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition"
                             >
                               {changingPassword ? "Actualizando..." : "Actualizar Contraseña"}
                             </button>
@@ -487,7 +510,7 @@ export default function AdminManagementPage() {
                                 setChangingPasswordUserId(null);
                                 setNewPassword("");
                               }}
-                              className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition"
+                              className="w-full sm:flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition"
                             >
                               Cancelar
                             </button>
@@ -495,11 +518,11 @@ export default function AdminManagementPage() {
                         </div>
                       ) : (
                         // MODO VISUALIZACIÓN
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex-1 min-w-0">
                             <p className="font-semibold">{displayName(user)}</p>
-                            <p className="text-sm text-gray-500">{user.email}</p>
-                            <div className="flex gap-2 mt-2">
+                            <p className="text-sm text-gray-500 break-all">{user.email}</p>
+                            <div className="flex flex-wrap gap-2 mt-2">
                               <span className={`text-xs px-2 py-1 rounded font-bold ${getRoleBadgeColor(user.role as string)}`}>
                                 {(user.role as string).toUpperCase()}
                               </span>
@@ -510,7 +533,7 @@ export default function AdminManagementPage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-2 flex-wrap justify-end">
+                          <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
                             <button
                               onClick={() => {
                                 setEditingUserId(user.id);
@@ -521,14 +544,14 @@ export default function AdminManagementPage() {
                                   active: user.active ?? true,
                                 });
                               }}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
                             >
                               Editar
                             </button>
                             {isAdmin && (
                               <button
                                 onClick={() => setChangingPasswordUserId(user.id)}
-                                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm"
+                                className="w-full sm:w-auto px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition text-sm"
                               >
                                 🔑 Contraseña
                               </button>
@@ -537,7 +560,7 @@ export default function AdminManagementPage() {
                               onClick={() =>
                                 handleDeleteUser(user.id, user.email || "usuario")
                               }
-                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                              className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
                             >
                               Eliminar
                             </button>

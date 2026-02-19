@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
+import { getFirstPasswordError, getPasswordRuleStatuses } from "../lib/password-policy";
 
 type InvitePreview =
   | { valid: false; reason: "not_found" | "expired" }
@@ -31,6 +32,11 @@ export default function AcceptInvitationPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const passwordRuleStatuses = useMemo(
+    () => getPasswordRuleStatuses(password),
+    [password]
+  );
+
   // Validar token al cargar
   useEffect(() => {
     if (!token) {
@@ -57,8 +63,9 @@ export default function AcceptInvitationPage() {
     e.preventDefault();
     if (!token || !preview || !preview.valid) return;
 
-    if (password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres.");
+    const passwordError = getFirstPasswordError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== password2) {
@@ -227,6 +234,16 @@ export default function AcceptInvitationPage() {
               className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#ccff00] outline-none bg-gray-50"
               placeholder="Mínimo 8 caracteres"
             />
+            <ul className="mt-2 space-y-1">
+              {passwordRuleStatuses.map((rule) => (
+                <li
+                  key={rule.key}
+                  className={`text-xs ${rule.ok ? "text-green-700" : "text-gray-500"}`}
+                >
+                  {rule.ok ? "[OK]" : "[ ]"} {rule.label}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div>

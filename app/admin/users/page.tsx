@@ -304,7 +304,7 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="grid grid-cols-12 px-4 py-3 text-xs font-bold text-gray-500 uppercase bg-gray-50 border-b border-gray-100">
+        <div className="hidden md:grid grid-cols-12 px-4 py-3 text-xs font-bold text-gray-500 uppercase bg-gray-50 border-b border-gray-100">
           <div className="col-span-3">Usuario</div>
           <div className="col-span-2">Email</div>
           <div className="col-span-1">Rol</div>
@@ -330,9 +330,9 @@ export default function AdminUsersPage() {
             return (
               <div
                 key={u.id}
-                className="grid grid-cols-12 px-4 py-4 border-b border-gray-100 items-center gap-2"
+                className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 border-b border-gray-100 items-start md:items-center gap-3"
               >
-                <div className="col-span-3">
+                <div className="md:col-span-3">
                   <p className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
                     {displayName(u)}
                     {isMe && (
@@ -354,9 +354,13 @@ export default function AdminUsersPage() {
                   <p className="text-xs text-gray-500 truncate">{u.id}</p>
                 </div>
 
-                <div className="col-span-2 text-sm text-gray-700 truncate">{u.email ?? "—"}</div>
+                <div className="md:col-span-2 text-sm text-gray-700 min-w-0">
+                  <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Email</p>
+                  <p className="break-all">{u.email ?? "—"}</p>
+                </div>
 
-                <div className="col-span-1">
+                <div className="md:col-span-1">
+                  <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
                   {isAdmin ? (
                     <span className="text-sm text-gray-700">admin</span>
                   ) : (
@@ -374,7 +378,8 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                <div className="col-span-1">
+                <div className="md:col-span-1">
+                  <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Estado</p>
                   <span
                     className={`text-xs font-semibold px-2 py-1 rounded-full ${
                       status === "pending"
@@ -397,7 +402,10 @@ export default function AdminUsersPage() {
                 </div>
 
                 {/* Columna: Vincular Jugador */}
-                <div className="col-span-3">
+                <div className="md:col-span-3">
+                  <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">
+                    Jugador vinculado
+                  </p>
                   {status === "approved" || status === "pending" ? (
                     <select
                       value={linkedPlayerId ?? ""}
@@ -421,18 +429,19 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                <div className="col-span-2 flex justify-end gap-2 flex-wrap">
+                <div className="md:col-span-2 flex flex-col sm:flex-row md:justify-end gap-2 flex-wrap">
+                  <p className="md:hidden text-[11px] font-bold uppercase text-gray-500">Acciones</p>
                   {status === "pending" && (
                     <>
                       <button
                         onClick={() => approve(u.id)}
-                        className="bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                        className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
                       >
                         Aprobar
                       </button>
                       <button
                         onClick={() => reject(u.id)}
-                        className="bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition"
+                        className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition"
                       >
                         Rechazar
                       </button>
@@ -442,7 +451,7 @@ export default function AdminUsersPage() {
                   {status === "deleted" && (
                     <button
                       onClick={() => setActive(u.id, true)}
-                      className="bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                      className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
                     >
                       Rehabilitar
                     </button>
@@ -453,7 +462,7 @@ export default function AdminUsersPage() {
                       {u.active === false ? (
                         <button
                           onClick={() => setActive(u.id, true)}
-                          className="bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                          className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
                         >
                           Habilitar
                         </button>
@@ -468,7 +477,7 @@ export default function AdminUsersPage() {
                               ? "No se deshabilita el admin principal desde aquí"
                               : ""
                           }
-                          className="bg-gray-900 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-black transition disabled:opacity-40"
+                          className="w-full sm:w-auto bg-gray-900 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-black transition disabled:opacity-40"
                         >
                           Deshabilitar
                         </button>
@@ -485,7 +494,7 @@ export default function AdminUsersPage() {
                               ? "No se elimina el admin principal desde aquí"
                               : "Eliminar = deshabilitar (reversible)"
                           }
-                          className="bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition disabled:opacity-40"
+                          className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition disabled:opacity-40"
                         >
                           Eliminar
                         </button>
@@ -494,7 +503,7 @@ export default function AdminUsersPage() {
                       {status === "rejected" && (
                         <button
                           onClick={() => approve(u.id)}
-                          className="bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                          className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
                         >
                           Aprobar
                         </button>

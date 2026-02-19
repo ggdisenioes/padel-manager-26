@@ -24,10 +24,42 @@ type TopPlayer = {
   level: number | null;
 };
 
+type WebVitalSummary = {
+  key: string;
+  path: string;
+  name: string;
+  samples: number;
+  avg: number;
+  p50: number;
+  p95: number;
+  poorRate: number;
+};
+
+type ApiTimingSummary = {
+  key: string;
+  path: string;
+  method: string | null;
+  samples: number;
+  avg: number;
+  p50: number;
+  p95: number;
+  poorRate: number;
+  status5xxRate: number;
+};
+
+type PerformanceSummary = {
+  generatedAt: string;
+  hours: number;
+  totalSamples: number;
+  webVitals: WebVitalSummary[];
+  apiTimings: ApiTimingSummary[];
+};
+
 export default function AnalyticsDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<Stats | null>(null);
   const [topPlayers, setTopPlayers] = useState<TopPlayer[]>([]);
+  const [performanceSummary, setPerformanceSummary] = useState<PerformanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,12 +98,21 @@ export default function AnalyticsDashboard() {
         headers["Authorization"] = `Bearer ${sessionData.session.access_token}`;
       }
 
-      const response = await fetch("/api/stats/global", { headers });
-      const result = await response.json();
+      const [globalRes, perfRes] = await Promise.all([
+        fetch("/api/stats/global", { headers }),
+        fetch("/api/admin/performance/summary?hours=24", { headers }),
+      ]);
 
-      if (response.ok) {
-        setStats(result.stats);
-        setTopPlayers(result.topPlayers || []);
+      const globalResult = await globalRes.json();
+      let perfResult: PerformanceSummary | null = null;
+      if (perfRes.ok) {
+        perfResult = (await perfRes.json()) as PerformanceSummary;
+      }
+
+      if (globalRes.ok) {
+        setStats(globalResult.stats);
+        setTopPlayers(globalResult.topPlayers || []);
+        setPerformanceSummary(perfResult);
       } else {
         toast.error("Error cargando estadísticas");
       }
@@ -262,6 +303,81 @@ export default function AnalyticsDashboard() {
           </div>
         </Card>
       </div>
+
+      <Card className="p-6">
+        <h2 className="text-lg font-bold mb-4">⚡ Performance (últimas 24h)</h2>
+        {!performanceSummary ? (
+          <p className="text-sm text-gray-500">
+            Aún no hay suficientes métricas. Esperá unos minutos y refrescá.
+          </p>
+        ) : (
+          <div className="space-y-6">
+            <div className="text-sm text-gray-600">
+              Muestras capturadas: <strong>{performanceSummary.totalSamples}</strong>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">Web Vitals (p95)</h3>
+              {performanceSummary.webVitals.length === 0 ? (
+                <p className="text-sm text-gray-500">Sin datos todavía.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Métrica</th>
+                        <th className="text-left py-2">Ruta</th>
+                        <th className="text-right py-2">p95</th>
+                        <th className="text-right py-2">Poor %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {performanceSummary.webVitals.slice(0, 8).map((row) => (
+                        <tr key={row.key} className="border-b">
+                          <td className="py-2 font-medium">{row.name}</td>
+                          <td className="py-2">{row.path}</td>
+                          <td className="text-right py-2">{row.p95}</td>
+                          <td className="text-right py-2">{row.poorRate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">APIs más lentas (p95)</h3>
+              {performanceSummary.apiTimings.length === 0 ? (
+                <p className="text-sm text-gray-500">Sin datos todavía.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Endpoint</th>
+                        <th className="text-left py-2">Método</th>
+                        <th className="text-right py-2">p95 ms</th>
+                        <th className="text-right py-2">5xx %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {performanceSummary.apiTimings.slice(0, 8).map((row) => (
+                        <tr key={row.key} className="border-b">
+                          <td className="py-2">{row.path}</td>
+                          <td className="py-2">{row.method || "GET"}</td>
+                          <td className="text-right py-2">{row.p95}</td>
+                          <td className="text-right py-2">{row.status5xxRate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Top Players */}
       {topPlayers.length > 0 && (

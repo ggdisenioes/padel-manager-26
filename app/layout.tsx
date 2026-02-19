@@ -2,6 +2,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import AppShell from "./components/AppShell";
+import WebVitalsReporter from "./components/WebVitalsReporter";
 import { LanguageProvider } from "./i18n";
 import { Suspense } from "react";
 
@@ -19,6 +20,7 @@ export default function RootLayout({
     <html lang="es">
       <body className="bg-[#05070b] text-gray-900 antialiased">
         <LanguageProvider>
+          <WebVitalsReporter />
           <Suspense fallback={null}>
             <AppShell>{children}</AppShell>
           </Suspense>

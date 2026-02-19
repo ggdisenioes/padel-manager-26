@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiTimingRating, recordPerformanceEvent } from "@/lib/performance";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -67,9 +68,38 @@ function getResolvedId(legacyId: number | null, newId?: number | null): number |
 }
 
 export async function GET(req: Request) {
+  const startedAt = performance.now();
+  let tenantId: string | null = null;
+  let userId: string | null = null;
+
+  const respond = (
+    body: Record<string, unknown>,
+    status = 200
+  ) => {
+    const durationMs = performance.now() - startedAt;
+    const response = NextResponse.json(body, { status });
+    response.headers.set("Server-Timing", `app;dur=${durationMs.toFixed(1)}`);
+
+    void recordPerformanceEvent({
+      metricType: "api_timing",
+      path: "/api/stats/players",
+      name: "GET",
+      method: "GET",
+      statusCode: status,
+      value: durationMs,
+      rating: getApiTimingRating(durationMs),
+      tenantId,
+      userId,
+      sampleRate: 0.4,
+      userAgent: req.headers.get("user-agent"),
+    });
+
+    return response;
+  };
+
   try {
     if (!supabaseUrl || !supabaseAnonKey) {
-      return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 });
+      return respond({ error: "Servidor mal configurado" }, 500);
     }
 
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -81,9 +111,10 @@ export async function GET(req: Request) {
       data: { user },
       error: authError,
     } = await supabaseClient.auth.getUser();
+    userId = user?.id ?? null;
 
     if (authError || !user) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+      return respond({ error: "No autorizado" }, 401);
     }
 
     const { data: profile } = await supabaseClient
@@ -93,8 +124,9 @@ export async function GET(req: Request) {
       .single();
 
     if (!profile?.tenant_id) {
-      return NextResponse.json({ error: "Perfil no encontrado" }, { status: 404 });
+      return respond({ error: "Perfil no encontrado" }, 404);
     }
+    tenantId = profile.tenant_id;
 
     const [
       { data: playersData, error: playersErr },
@@ -130,7 +162,7 @@ export async function GET(req: Request) {
       ]);
 
     if (playersErr) {
-      return NextResponse.json({ error: playersErr.message }, { status: 500 });
+      return respond({ error: playersErr.message }, 500);
     }
 
     let legacyMatches: MatchRow[] | null = null;
@@ -144,18 +176,18 @@ export async function GET(req: Request) {
         .eq("tenant_id", profile.tenant_id);
 
       if (matchesErr) {
-        return NextResponse.json({ error: matchesErr.message }, { status: 500 });
+        return respond({ error: matchesErr.message }, 500);
       }
 
       legacyMatches = (matchesData || []) as MatchRow[];
     }
 
     if (pendingErr) {
-      return NextResponse.json({ error: pendingErr.message }, { status: 500 });
+      return respond({ error: pendingErr.message }, 500);
     }
 
     if (friendlyFinishedErr) {
-      return NextResponse.json({ error: friendlyFinishedErr.message }, { status: 500 });
+      return respond({ error: friendlyFinishedErr.message }, 500);
     }
 
     const players = (playersData || []) as PlayerRow[];
@@ -284,9 +316,9 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ players: playersWithStats });
+    return respond({ players: playersWithStats }, 200);
   } catch (error) {
     console.error("PLAYERS STATS GET ERROR:", error);
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
+    return respond({ error: "Error interno del servidor" }, 500);
   }
 }

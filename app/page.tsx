@@ -775,7 +775,7 @@ export default function DashboardPage() {
         {/* GRID PRINCIPAL (estilo dashboard con panel derecho) */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* COLUMNA IZQUIERDA */}
-          <div className="lg:col-span-8 space-y-6">
+          <div className="order-2 lg:order-1 lg:col-span-8 space-y-6">
             {/* KPIs */}
             {(isAdmin || isManager) && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
@@ -1138,7 +1138,7 @@ export default function DashboardPage() {
           </div>
 
           {/* COLUMNA DERECHA */}
-          <aside className="lg:col-span-4 space-y-6">
+          <aside className="order-1 lg:order-2 lg:col-span-4 space-y-6">
             {/* CENTRO DE TAREAS */}
             {canManageUsers && (
               <div

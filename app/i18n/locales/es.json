@@ -109,7 +109,7 @@
   },
   "dashboard": {
     "title": "Panel General",
-    "welcome": "Bienvenido a PadelX QA",
+    "welcome": "Bienvenido a Twinco",
     "loading": "Cargando datos del panel...",
     "errorLoading": "Error cargando datos",
     "totalPlayers": "Jugadores",

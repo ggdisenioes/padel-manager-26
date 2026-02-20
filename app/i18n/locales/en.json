@@ -109,7 +109,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "welcome": "Welcome to PadelX QA",
+    "welcome": "Welcome to Twinco",
     "loading": "Loading dashboard data...",
     "errorLoading": "Error loading data",
     "totalPlayers": "Players",

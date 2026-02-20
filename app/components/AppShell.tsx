@@ -186,6 +186,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               aria-label={mobileOpen ? t("shell.closeMenu") : t("shell.openMenu")}
+              data-testid="mobile-menu-toggle"
               className="absolute right-4 inline-flex items-center gap-2 rounded-md border border-white/40 bg-black/30 px-3 py-2 shadow-sm hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#05070b] focus:ring-[#ccff00]"
               style={{ color: "#ffffff" }}
               onClick={() => setMobileOpen((o) => !o)}

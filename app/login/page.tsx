@@ -143,6 +143,7 @@ export default function LoginPage() {
             <input
               type="email"
               required
+              data-testid="login-email"
               className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#ccff00] focus:border-transparent outline-none transition bg-gray-50"
               placeholder="usuario@twinco.com"
               value={email}
@@ -155,6 +156,7 @@ export default function LoginPage() {
             <input
               type="password"
               required
+              data-testid="login-password"
               className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#ccff00] focus:border-transparent outline-none transition bg-gray-50"
               placeholder="••••••••"
               value={password}
@@ -165,6 +167,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
+            data-testid="login-submit"
             className="w-full bg-gray-900 text-white font-bold py-3.5 rounded-lg hover:bg-black transition duration-200 disabled:opacity-70 shadow-lg"
           >
             {loading ? "Accediendo..." : "Iniciar Sesión"}

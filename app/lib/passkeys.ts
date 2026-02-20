@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { NextRequest, NextResponse } from "next/server";
+import { getClientIp, rateLimit } from "@/lib/rate-limit";
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 
@@ -158,4 +159,58 @@ export function readChallengeCookie(
 
 export function toUserIDBuffer(userId: string) {
   return new TextEncoder().encode(userId);
+}
+
+export type PasskeyRequestContext = {
+  ip: string;
+  userAgent: string;
+};
+
+export function getPasskeyRequestContext(req: Request): PasskeyRequestContext {
+  return {
+    ip: getClientIp(req),
+    userAgent: req.headers.get("user-agent") || "unknown",
+  };
+}
+
+export function applyPasskeyRateLimit(
+  key: string,
+  {
+    maxRequests,
+    windowMs,
+  }: {
+    maxRequests: number;
+    windowMs: number;
+  }
+): { success: boolean; remaining: number } {
+  return rateLimit(key, { maxRequests, windowMs });
+}
+
+type PasskeyAuditLogInput = {
+  supabaseAdmin: ReturnType<typeof createSupabaseAdminClient>;
+  action: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export async function logPasskeyAuditEvent({
+  supabaseAdmin,
+  action,
+  userId = null,
+  userEmail = null,
+  metadata = {},
+}: PasskeyAuditLogInput) {
+  try {
+    await supabaseAdmin.from("action_logs").insert({
+      action,
+      entity: "auth_passkey",
+      entity_id: null,
+      user_id: userId,
+      user_email: userEmail,
+      metadata,
+    });
+  } catch (error) {
+    console.warn("[passkeys/audit]", error);
+  }
 }

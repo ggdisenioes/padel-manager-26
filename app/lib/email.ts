@@ -220,6 +220,60 @@ export async function sendMatchNotification(opts: {
   }
 }
 
+export async function sendMatchFinishedNotification(opts: {
+  playerEmails: { name: string; email: string | null }[];
+  winners: string;
+  losers: string;
+  score: string;
+  matchDate: string;
+  court?: string;
+  roundName?: string;
+  clubName?: string;
+}) {
+  const {
+    playerEmails,
+    winners,
+    losers,
+    score,
+    matchDate,
+    court,
+    roundName,
+    clubName = "TWINCO",
+  } = opts;
+
+  const safeClub = esc(clubName);
+  const safeWinners = esc(winners);
+  const safeLosers = esc(losers);
+  const safeScore = esc(score);
+  const safeDate = esc(matchDate);
+  const safeCourt = esc(court);
+  const safeRound = esc(roundName);
+  const subject = `Partido finalizado en ${safeClub}`;
+
+  for (const player of playerEmails) {
+    if (!player.email) continue;
+
+    const safeName = esc(player.name);
+    const body = baseLayout(
+      subject,
+      `<h2>Partido finalizado</h2>
+      <p>Hola <strong>${safeName}</strong>.</p>
+      <p><strong>Felicitaciones ${safeWinners}</strong>.</p>
+      <table class="info-table">
+        <tr><td>Ganadores</td><td>${safeWinners}</td></tr>
+        <tr><td>Perdedores</td><td>${safeLosers}</td></tr>
+        <tr><td>Resultado</td><td>${safeScore}</td></tr>
+        <tr><td>Fecha</td><td>${safeDate}</td></tr>
+        ${safeRound ? `<tr><td>Ronda</td><td>${safeRound}</td></tr>` : ""}
+        ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
+      </table>
+      <a class="btn" href="${APP_URL}/matches">Ver partido</a>`
+    );
+
+    await sendEmail(player.email, subject, body);
+  }
+}
+
 export async function sendMatchProposalNotification(opts: {
   adminEmails: { name: string; email: string }[];
   teamA: string;

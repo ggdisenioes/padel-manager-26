@@ -2,10 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendMatchNotification } from "@/lib/email";
+import { sendMatchFinishedNotification, sendMatchNotification } from "@/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+type NotificationType = "match_created" | "match_finished";
 
 export async function POST(req: Request) {
   try {
@@ -25,9 +26,13 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { type, match_id, match_ids } = body;
+    const { type, match_id, match_ids } = body as {
+      type?: NotificationType;
+      match_id?: number;
+      match_ids?: number[];
+    };
 
-    if (type !== "match_created") {
+    if (type !== "match_created" && type !== "match_finished") {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
@@ -49,7 +54,7 @@ export async function POST(req: Request) {
     // Fetch all matches
     const { data: matches, error: matchError } = await supabaseAdmin
       .from("matches")
-      .select("id, player_1_a, player_2_a, player_1_b, player_2_b, start_time, court, place, tenant_id")
+      .select("id, player_1_a, player_2_a, player_1_b, player_2_b, start_time, court, place, tenant_id, score, winner, round_name")
       .in("id", ids);
 
     if (matchError || !matches || matches.length === 0) {
@@ -93,6 +98,9 @@ export async function POST(req: Request) {
 
       const teamA = `${getName(match.player_1_a)} y ${getName(match.player_2_a)}`;
       const teamB = `${getName(match.player_1_b)} y ${getName(match.player_2_b)}`;
+      const winners = match.winner === "A" ? teamA : match.winner === "B" ? teamB : "";
+      const losers = match.winner === "A" ? teamB : match.winner === "B" ? teamA : "";
+      const scoreText = match.score || "Resultado pendiente";
 
       let matchDate = "Fecha por confirmar";
       if (match.start_time) {
@@ -145,14 +153,32 @@ export async function POST(req: Request) {
       );
 
       if (playerEmails.length > 0) {
-        await sendMatchNotification({
-          playerEmails,
-          teamA,
-          teamB,
-          matchDate,
-          court: courtText,
-          clubName: tenant?.name || "TWINCO",
-        });
+        if (type === "match_created") {
+          await sendMatchNotification({
+            playerEmails,
+            teamA,
+            teamB,
+            matchDate,
+            court: courtText,
+            clubName: tenant?.name || "TWINCO",
+          });
+        } else {
+          if (!winners) {
+            console.warn(`[notifications] Match ${match.id}: winner is missing, skipping match_finished notification`);
+            continue;
+          }
+
+          await sendMatchFinishedNotification({
+            playerEmails,
+            winners,
+            losers,
+            score: scoreText,
+            matchDate,
+            court: courtText,
+            roundName: match.round_name || undefined,
+            clubName: tenant?.name || "TWINCO",
+          });
+        }
         totalSent += playerEmails.length;
       }
     }

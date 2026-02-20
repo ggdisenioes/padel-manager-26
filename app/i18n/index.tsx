@@ -115,15 +115,22 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     flattenStrings(en as Record<string, unknown>, enFlat);
 
     const map = new Map<string, string>();
+    const reverseMap = new Map<string, string>();
     for (const [key, esValue] of Object.entries(esFlat)) {
       const enValue = enFlat[key];
       if (!enValue || esValue === enValue) continue;
       map.set(esValue, enValue);
+      if (!reverseMap.has(enValue)) {
+        reverseMap.set(enValue, esValue);
+      }
     }
     const entries = Array.from(map.entries()).sort(
       (a, b) => b[0].length - a[0].length
     );
-    return { map, entries };
+    const reverseEntries = Array.from(reverseMap.entries()).sort(
+      (a, b) => b[0].length - a[0].length
+    );
+    return { map, entries, reverseMap, reverseEntries };
   }, []);
 
   useEffect(() => {
@@ -158,10 +165,20 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       return false;
     };
 
+    const normalizeToSpanish = (value: string) =>
+      translatePreservingWhitespace(
+        value,
+        domTranslationMap.reverseMap,
+        domTranslationMap.reverseEntries
+      );
+
     const applyTextNodeTranslation = (textNode: Text) => {
       if (shouldSkipTextNode(textNode)) return;
       if (!originalTextRef.current.has(textNode)) {
-        originalTextRef.current.set(textNode, textNode.nodeValue ?? "");
+        const currentValue = textNode.nodeValue ?? "";
+        const canonicalOriginal =
+          locale === "en" ? normalizeToSpanish(currentValue) : currentValue;
+        originalTextRef.current.set(textNode, canonicalOriginal);
       }
       const original = originalTextRef.current.get(textNode) ?? "";
       const nextValue =
@@ -187,7 +204,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         const currentValue = el.getAttribute(attr);
         if (currentValue == null) return;
         if (attrStore[attr] === undefined) {
-          attrStore[attr] = currentValue;
+          attrStore[attr] =
+            locale === "en" ? normalizeToSpanish(currentValue) : currentValue;
         }
         const original = attrStore[attr];
         const nextValue =

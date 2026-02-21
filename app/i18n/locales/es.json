@@ -707,7 +707,7 @@
     },
     "dashboard": {
       "title": "Super Admin Dashboard",
-      "subtitle": "Bienvenido a PadelX QA — Control total de tu SaaS",
+      "subtitle": "Bienvenido a Twinco — Control total de tu SaaS",
       "loading": "Cargando métricas...",
       "errorLoading": "Error cargando métricas",
       "mrrSubtitle": "Monthly Recurring Revenue",

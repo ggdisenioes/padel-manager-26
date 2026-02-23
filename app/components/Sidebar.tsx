@@ -184,7 +184,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
   };
 
   return (
-    <aside className="w-56 h-full md:min-h-screen flex flex-col overflow-hidden text-white bg-gradient-to-b from-[#0b1220] via-[#0e1626] to-[#0a1020] border-r border-white/5">
+    <aside className="w-56 h-screen flex flex-col overflow-hidden text-white bg-gradient-to-b from-[#0b1220] via-[#0e1626] to-[#0a1020] border-r border-white/5">
       {/* HEADER / LOGO */}
       <div className="px-5 py-6 border-b border-white/10 text-center">
         <h1 className="text-[26px] font-extrabold italic tracking-tight">

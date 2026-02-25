@@ -6,6 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 
 import { supabase } from "../lib/supabase";
+import { notifyMatchByType, type MatchNotificationType } from "../lib/notify";
 import { useRole } from "../hooks/useRole";
 import MatchCard from "../components/matches/MatchCard";
 import { formatDateMadrid, formatTimeMadrid } from "@/lib/dates";
@@ -63,6 +64,8 @@ export default function MatchesPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
 
   const [openResultMatch, setOpenResultMatch] = useState<Match | null>(null);
+  const [openNotifyMenuMatchId, setOpenNotifyMenuMatchId] = useState<number | null>(null);
+  const [sendingNotifyKey, setSendingNotifyKey] = useState<string | null>(null);
   const shareCardRef = useRef<HTMLDivElement>(null);
 
   // Si entran con /matches?status=pending, forzamos la vista pendientes
@@ -188,6 +191,18 @@ export default function MatchesPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (openNotifyMenuMatchId === null) return;
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-notify-menu]")) return;
+      setOpenNotifyMenuMatchId(null);
+    };
+
+    document.addEventListener("click", handleDocumentClick);
+    return () => document.removeEventListener("click", handleDocumentClick);
+  }, [openNotifyMenuMatchId]);
+
   const isPlayed = (m: Match) => !!m.score && !!m.winner && String(m.winner).toLowerCase() !== "pending";
 
   const formatScoreForDisplay = (raw: string | null) => {
@@ -224,6 +239,45 @@ export default function MatchesPage() {
 
     toast.success(t("matches.deleted"));
     setMatches((prev) => prev.filter((m) => m.id !== matchId));
+  };
+
+  const handleNotify = async (match: Match, type: MatchNotificationType) => {
+    if (type === "match_finished" && !isPlayed(match)) {
+      toast.error(t("matches.notifyNeedsFinished"));
+      return;
+    }
+
+    const opKey = `${match.id}:${type}`;
+    setSendingNotifyKey(opKey);
+    const result = await notifyMatchByType(match.id, type);
+    setSendingNotifyKey(null);
+    setOpenNotifyMenuMatchId(null);
+
+    if (!result.ok) {
+      if (result.status === 401) {
+        toast.error(t("matches.notifyUnauthorized"));
+      } else if (result.status === 403) {
+        toast.error(t("matches.notifyForbidden"));
+      } else {
+        toast.error(t("matches.notifyError"));
+      }
+      return;
+    }
+
+    if (result.sent === 0) {
+      toast.error(t("matches.notifyNoRecipients"));
+      return;
+    }
+
+    if (type === "match_created") {
+      toast.success(t("matches.notifyCreatedSent", { count: result.sent }));
+      return;
+    }
+    if (type === "match_reminder") {
+      toast.success(t("matches.notifyReminderSent", { count: result.sent }));
+      return;
+    }
+    toast.success(t("matches.notifyFinishedSent", { count: result.sent }));
   };
 
   const filteredMatches = useMemo(() => {
@@ -406,6 +460,65 @@ export default function MatchesPage() {
               {/* Acciones */}
               {(isAdmin || isManager) && (
                 <div className="flex flex-wrap gap-2 justify-end">
+                  <div className="relative" data-notify-menu>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenNotifyMenuMatchId((prev) => (prev === m.id ? null : m.id));
+                      }}
+                      className="inline-flex items-center justify-center max-w-[140px] bg-emerald-100 text-emerald-800 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-semibold hover:bg-emerald-200 transition"
+                    >
+                      <span className="truncate">{t("matches.notifyAction")}</span>
+                    </button>
+
+                    {openNotifyMenuMatchId === m.id && (
+                      <div className="absolute right-0 top-full mt-2 z-20 min-w-[220px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-1 shadow-xl">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleNotify(m, "match_created");
+                          }}
+                          disabled={sendingNotifyKey === `${m.id}:match_created`}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs sm:text-sm leading-snug whitespace-normal break-words hover:bg-gray-50 transition disabled:opacity-60"
+                        >
+                          {sendingNotifyKey === `${m.id}:match_created`
+                            ? t("matches.notifySending")
+                            : t("matches.notifyCreated")}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleNotify(m, "match_reminder");
+                          }}
+                          disabled={sendingNotifyKey === `${m.id}:match_reminder`}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs sm:text-sm leading-snug whitespace-normal break-words hover:bg-gray-50 transition disabled:opacity-60"
+                        >
+                          {sendingNotifyKey === `${m.id}:match_reminder`
+                            ? t("matches.notifySending")
+                            : t("matches.notifyReminder")}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleNotify(m, "match_finished");
+                          }}
+                          disabled={!isPlayed(m) || sendingNotifyKey === `${m.id}:match_finished`}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs sm:text-sm leading-snug whitespace-normal break-words hover:bg-gray-50 transition disabled:cursor-not-allowed disabled:text-gray-400"
+                        >
+                          {sendingNotifyKey === `${m.id}:match_finished`
+                            ? t("matches.notifySending")
+                            : t("matches.notifyFinished")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <Link
                     href={`/matches/edit/${m.id}`}
                     onClick={(e) => e.stopPropagation()}

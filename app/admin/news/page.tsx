@@ -63,6 +63,14 @@ export default function AdminNewsPage() {
     setEditingId(null);
   };
 
+  const closeForm = () => {
+    resetForm();
+    setShowForm(false);
+    if (requestedEditId !== null) {
+      router.replace("/admin/news");
+    }
+  };
+
   const checkAuth = async () => {
     const {
       data: { user },
@@ -195,8 +203,7 @@ export default function AdminNewsPage() {
       }
 
       toast.success(editingId ? "Noticia actualizada" : "Noticia creada");
-      resetForm();
-      setShowForm(false);
+      closeForm();
       await fetchNews();
     } catch (error: any) {
       toast.error(error?.message || "Error al guardar noticia");
@@ -278,8 +285,7 @@ export default function AdminNewsPage() {
         <button
           onClick={() => {
             if (showForm) {
-              resetForm();
-              setShowForm(false);
+              closeForm();
               return;
             }
             resetForm();

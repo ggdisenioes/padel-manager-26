@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import Link from "next/link";
 import Card from "../components/Card";
+import { useRole } from "../hooks/useRole";
 
 type News = {
   id: number;
@@ -14,6 +15,7 @@ type News = {
 };
 
 export default function NewsPage() {
+  const { isAdmin, isManager } = useRole();
   const [news, setNews] = useState<News[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,6 +56,14 @@ export default function NewsPage() {
     <main className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">📰 Noticias</h1>
+        {(isAdmin || isManager) && (
+          <Link
+            href="/admin/news"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold"
+          >
+            + Nueva Noticia
+          </Link>
+        )}
       </div>
 
       {news.length === 0 ? (

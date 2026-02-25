@@ -77,12 +77,20 @@ export async function GET(req: Request) {
       return respond({ error: statsErr.message }, 500);
     }
 
+    // Count only active (non-deleted) players for analytics cards.
+    const { count: activePlayersCount } = await supabaseClient
+      .from("players")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", profile.tenant_id)
+      .is("deleted_at", null);
+
     // Get top players
     const { data: topPlayers } = await supabaseClient
       .from("players")
       .select("id, name, level, avatar_url")
       .eq("tenant_id", profile.tenant_id)
       .eq("is_approved", true)
+      .is("deleted_at", null)
       .order("level", { ascending: false })
       .limit(10);
 
@@ -109,8 +117,16 @@ export async function GET(req: Request) {
       bookingsByCourt[courtId] = (bookingsByCourt[courtId] || 0) + 1;
     });
 
+    const normalizedStats = {
+      ...(platformStats || {}),
+      total_players:
+        typeof activePlayersCount === "number"
+          ? activePlayersCount
+          : Number((platformStats as any)?.total_players || 0),
+    };
+
     return respond({
-      stats: platformStats || {
+      stats: Object.keys(normalizedStats).length > 0 ? normalizedStats : {
         total_users: 0,
         total_active_users: 0,
         total_players: 0,

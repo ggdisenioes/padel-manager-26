@@ -101,7 +101,7 @@ export default function DashboardPage() {
       <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md z-10 border-t-4 border-[#ccff00]">
         <div className="text-center mb-6">
           <img
-            src="/logo.svg"
+            src="/logo-fondo.png"
             alt="TWINCO"
             className="h-10 w-auto mx-auto object-contain"
           />

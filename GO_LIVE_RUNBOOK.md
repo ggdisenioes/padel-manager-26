@@ -44,3 +44,8 @@
   - Capture failing endpoint, timestamp, and user impact.
   - Check Vercel deployment status/logs.
   - Check Supabase status and recent migrations.
+- Automation:
+  - GitHub Action: `.github/workflows/prod-health-monitor.yml`
+  - Manual trigger: `Actions -> Production Health Monitor -> Run workflow`
+  - Local smoke: `npm run go-live:smoke`
+  - Local monitor check: `npm run monitor:health`

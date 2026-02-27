@@ -10,6 +10,7 @@
     "check:migrations": "node scripts/go-live/check-migrations-static.mjs",
     "check:client-secrets": "node scripts/go-live/check-client-secrets.mjs",
     "go-live:smoke": "node scripts/go-live/smoke-prod.mjs",
+    "monitor:health": "node scripts/go-live/monitor-health.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",

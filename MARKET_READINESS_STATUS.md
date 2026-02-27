@@ -11,7 +11,7 @@ Last updated: 2026-02-27
 - Client secret exposure guard enabled in CI (`SUPABASE_SERVICE_ROLE_KEY` in client code).
 - Production health monitor automation enabled (scheduled GitHub Action + incident issue automation).
 - E2E CI is resilient to missing role credentials:
-  - runs full suite when role secrets are configured;
+  - runs full suite when real Supabase + role secrets are configured;
   - runs public smoke fallback when they are not.
 - Go-live smoke and runbook are in repository.
 

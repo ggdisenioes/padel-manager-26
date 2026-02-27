@@ -55,5 +55,5 @@
   - Backup readiness strictness: `BACKUP_READINESS_STRICT` (defaults to `false` in workflow)
   - Required repo secret for automated backup check: `SUPABASE_ACCESS_TOKEN`
   - E2E workflow behavior:
-    - If role credentials are present, it runs full suite.
+    - If real Supabase env + role credentials are present, it runs full suite.
     - If role credentials are missing, it runs `tests/e2e/public.smoke.spec.ts` fallback and uploads `e2e-env-report`.

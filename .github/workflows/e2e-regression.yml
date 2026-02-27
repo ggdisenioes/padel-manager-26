@@ -12,8 +12,9 @@ jobs:
     timeout-minutes: 30
     env:
       CI: true
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+      E2E_HAS_REAL_SUPABASE_ENV: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' }}
       E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
       E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
       E2E_MANAGER_EMAIL: ${{ secrets.E2E_MANAGER_EMAIL }}
@@ -39,6 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           E2E_ENV_MODE=smoke npm run -s check:e2e-env | tee e2e-env-report.txt
+          echo "core_ready=$E2E_HAS_REAL_SUPABASE_ENV" >> "$GITHUB_OUTPUT"
           if grep -q "E2E_ROLE_CREDENTIALS_READY=true" e2e-env-report.txt; then
             echo "role_ready=true" >> "$GITHUB_OUTPUT"
           else
@@ -49,11 +51,11 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run full e2e regression tests
-        if: steps.env_check.outputs.role_ready == 'true'
+        if: steps.env_check.outputs.role_ready == 'true' && steps.env_check.outputs.core_ready == 'true'
         run: npm run test:e2e
 
       - name: Run public smoke fallback
-        if: steps.env_check.outputs.role_ready != 'true'
+        if: steps.env_check.outputs.role_ready != 'true' || steps.env_check.outputs.core_ready != 'true'
         run: npm run test:e2e -- tests/e2e/public.smoke.spec.ts
 
       - name: Upload Playwright Report

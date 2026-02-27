@@ -3,6 +3,7 @@
 ## 1. Pre-deploy checks
 - `npm run check:migrations`
 - `npm run check:client-secrets`
+- `npm run check:e2e-env` (in CI with secrets present)
 - `npm run build`
 - `npm run test:e2e` (expect role tests to skip if E2E role credentials are missing)
 - `supabase db lint --linked`
@@ -46,6 +47,9 @@
   - Check Supabase status and recent migrations.
 - Automation:
   - GitHub Action: `.github/workflows/prod-health-monitor.yml`
+  - GitHub Action: `.github/workflows/supabase-backup-readiness.yml`
   - Manual trigger: `Actions -> Production Health Monitor -> Run workflow`
   - Local smoke: `npm run go-live:smoke`
   - Local monitor check: `npm run monitor:health`
+  - Backup readiness check: `npm run check:backup-readiness`
+  - Required repo secret for backup workflow: `SUPABASE_ACCESS_TOKEN`

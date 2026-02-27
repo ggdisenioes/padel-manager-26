@@ -220,6 +220,44 @@ export async function sendMatchNotification(opts: {
   }
 }
 
+export async function sendMatchReminderNotification(opts: {
+  playerEmails: { name: string; email: string | null }[];
+  teamA: string;
+  teamB: string;
+  matchDate: string;
+  court?: string;
+  clubName?: string;
+}) {
+  const { playerEmails, teamA, teamB, matchDate, court, clubName = "TWINCO" } = opts;
+
+  const safeClub = esc(clubName);
+  const safeTeamA = esc(teamA);
+  const safeTeamB = esc(teamB);
+  const safeDate = esc(matchDate);
+  const safeCourt = esc(court);
+  const subject = `Recordatorio de partido en ${safeClub}`;
+
+  for (const player of playerEmails) {
+    if (!player.email) continue;
+
+    const safeName = esc(player.name);
+    const body = baseLayout(
+      subject,
+      `<h2>Recordatorio de Partido</h2>
+      <p>Hola <strong>${safeName}</strong>, este es un recordatorio de tu partido.</p>
+      <table class="info-table">
+        <tr><td>Equipo A</td><td>${safeTeamA}</td></tr>
+        <tr><td>Equipo B</td><td>${safeTeamB}</td></tr>
+        <tr><td>Fecha</td><td>${safeDate}</td></tr>
+        ${court ? `<tr><td>Pista</td><td>${safeCourt}</td></tr>` : ""}
+      </table>
+      <a class="btn" href="${APP_URL}/matches">Ver partido</a>`
+    );
+
+    await sendEmail(player.email, subject, body);
+  }
+}
+
 export async function sendMatchFinishedNotification(opts: {
   playerEmails: { name: string; email: string | null }[];
   winners: string;

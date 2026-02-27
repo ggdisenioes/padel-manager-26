@@ -2,11 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendMatchFinishedNotification, sendMatchNotification } from "@/lib/email";
+import {
+  sendMatchFinishedNotification,
+  sendMatchNotification,
+  sendMatchReminderNotification,
+} from "@/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-type NotificationType = "match_created" | "match_finished";
+type NotificationType = "match_created" | "match_finished" | "match_reminder";
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +29,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
 
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: callerProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const callerRole = String(callerProfile?.role || "").toLowerCase();
+    if (!["admin", "manager", "super_admin"].includes(callerRole)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
+
     const body = await req.json();
     const { type, match_id, match_ids } = body as {
       type?: NotificationType;
@@ -32,7 +51,7 @@ export async function POST(req: Request) {
       match_ids?: number[];
     };
 
-    if (type !== "match_created" && type !== "match_finished") {
+    if (type !== "match_created" && type !== "match_finished" && type !== "match_reminder") {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
 
@@ -46,10 +65,6 @@ export async function POST(req: Request) {
     if (ids.length === 0) {
       return NextResponse.json({ error: "No match IDs" }, { status: 400 });
     }
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
 
     // Fetch all matches
     const { data: matches, error: matchError } = await supabaseAdmin
@@ -155,6 +170,15 @@ export async function POST(req: Request) {
       if (playerEmails.length > 0) {
         if (type === "match_created") {
           await sendMatchNotification({
+            playerEmails,
+            teamA,
+            teamB,
+            matchDate,
+            court: courtText,
+            clubName: tenant?.name || "TWINCO",
+          });
+        } else if (type === "match_reminder") {
+          await sendMatchReminderNotification({
             playerEmails,
             teamA,
             teamB,

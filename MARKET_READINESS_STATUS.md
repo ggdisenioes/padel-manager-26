@@ -10,6 +10,9 @@ Last updated: 2026-02-27
 - Migration guardrails enabled in CI (naming/order/version uniqueness).
 - Client secret exposure guard enabled in CI (`SUPABASE_SERVICE_ROLE_KEY` in client code).
 - Production health monitor automation enabled (scheduled GitHub Action + incident issue automation).
+- E2E CI is resilient to missing role credentials:
+  - runs full suite when role secrets are configured;
+  - runs public smoke fallback when they are not.
 - Go-live smoke and runbook are in repository.
 
 ## Pending (Blockers for stronger production resilience)
@@ -27,8 +30,8 @@ Last updated: 2026-02-27
   - explicit downgrade/upgrade and failed payment handling flows.
 - External backup/restore drill:
   - run and document one full restore simulation.
-- E2E suite completeness:
-  - ensure all role credentials are set in CI and role tests run (not skipped).
+- E2E role suite completeness:
+  - configure all role credentials in CI so fallback mode is no longer used.
 
 ## Verification commands
 - `npm run check:migrations`

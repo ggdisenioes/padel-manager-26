@@ -3,9 +3,9 @@
 ## 1. Pre-deploy checks
 - `npm run check:migrations`
 - `npm run check:client-secrets`
-- `npm run check:e2e-env` (in CI with secrets present)
+- `npm run check:e2e-env` (strict mode, requires role credentials)
 - `npm run build`
-- `npm run test:e2e` (expect role tests to skip if E2E role credentials are missing)
+- `npm run test:e2e`
 - `supabase db lint --linked`
 - `supabase migration list --linked` (local vs remote aligned)
 
@@ -52,4 +52,8 @@
   - Local smoke: `npm run go-live:smoke`
   - Local monitor check: `npm run monitor:health`
   - Backup readiness check: `npm run check:backup-readiness`
-  - Required repo secret for backup workflow: `SUPABASE_ACCESS_TOKEN`
+  - Backup readiness strictness: `BACKUP_READINESS_STRICT` (defaults to `false` in workflow)
+  - Required repo secret for automated backup check: `SUPABASE_ACCESS_TOKEN`
+  - E2E workflow behavior:
+    - If role credentials are present, it runs full suite.
+    - If role credentials are missing, it runs `tests/e2e/public.smoke.spec.ts` fallback and uploads `e2e-env-report`.

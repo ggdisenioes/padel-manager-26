@@ -65,14 +65,15 @@ jobs:
 
             const existing = issues.find((i) => i.title.startsWith(`${marker} incident`));
             const now = new Date().toISOString();
-            const body = `Automatic production health monitor failed at ${now}.
-
-\`\`\`json
-${report}
-\`\`\`
-
-Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}
-`;
+            const body = [
+              `Automatic production health monitor failed at ${now}.`,
+              "",
+              "```json",
+              report,
+              "```",
+              "",
+              `Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            ].join("\\n");
 
             if (existing) {
               await github.rest.issues.createComment({

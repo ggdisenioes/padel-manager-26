@@ -104,14 +104,15 @@ jobs:
 
             const existing = issues.find((i) => i.title.startsWith(`${marker} incident`));
             const now = new Date().toISOString();
-            const body = `Automatic backup readiness check failed at ${now}.
-
-\`\`\`
-${report}
-\`\`\`
-
-Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}
-`;
+            const body = [
+              `Automatic backup readiness check failed at ${now}.`,
+              "",
+              "```",
+              report,
+              "```",
+              "",
+              `Workflow run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            ].join("\\n");
 
             if (existing) {
               await github.rest.issues.createComment({

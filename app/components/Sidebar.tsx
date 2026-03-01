@@ -203,7 +203,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
       <div className="px-5 py-6 border-b border-white/10 text-center">
         {isTwincoTenant ? (
           <img
-            src="/logo-fondo.png"
+            src="/logo.svg"
             alt="TWINCO"
             className="h-8 w-auto mx-auto object-contain"
           />

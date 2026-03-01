@@ -57,3 +57,15 @@
   - E2E workflow behavior:
     - If real Supabase env + role credentials are present, it runs full suite.
     - If role credentials are missing, it runs `tests/e2e/public.smoke.spec.ts` fallback and uploads `e2e-env-report`.
+
+## 7. Billing operations (super-admin)
+- Plan transition endpoint:
+  - `PUT /api/super-admin/tenants/[id]` with `subscription_plan_id`.
+  - Response includes transition type: `upgrade` / `downgrade` / `lateral`.
+  - Downgrades are blocked (`409 BILLING_DOWNGRADE_BLOCKED`) when tenant usage exceeds target plan limits.
+- Payment lifecycle endpoint:
+  - `PUT /api/super-admin/tenants/[id]` with `billing_event`.
+  - Supported events: `payment_failed`, `payment_recovered`.
+  - Reactivation to `active` is blocked when overdue invoices exist unless `force=true`.
+- Audit:
+  - Billing transitions and status changes are logged in `super_admin_action_logs`.

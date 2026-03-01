@@ -13,6 +13,12 @@ Last updated: 2026-02-27
 - E2E CI is resilient to missing role credentials:
   - runs full suite when real Supabase + role secrets are configured;
   - runs public smoke fallback when they are not.
+- Billing lifecycle hardening is active in super-admin tenant API:
+  - explicit plan transitions (`upgrade`, `downgrade`, `lateral`);
+  - downgrade blocked when current usage exceeds target plan limits;
+  - explicit failed-payment / recovered-payment status handling;
+  - reactivation guard when overdue invoices exist (unless `force=true`);
+  - audit trail in `super_admin_action_logs`.
 - Go-live smoke and runbook are in repository.
 
 ## Pending (Blockers for stronger production resilience)
@@ -26,8 +32,6 @@ Last updated: 2026-02-27
     - Enable PITR in Supabase project settings and confirm backup window is populated.
 
 ## Pending (Recommended before scale-up)
-- Billing lifecycle hardening:
-  - explicit downgrade/upgrade and failed payment handling flows.
 - External backup/restore drill:
   - run and document one full restore simulation.
 - E2E role suite completeness:

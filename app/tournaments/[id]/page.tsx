@@ -14,7 +14,6 @@ type Tournament = {
   name: string;
   category: string | null;
   start_date: string | null;
-  end_date: string | null;
 };
 
 type PlayerMap = {
@@ -55,7 +54,7 @@ export default function TournamentDetail() {
           await Promise.all([
             supabase
               .from("tournaments")
-              .select("id, name, category, start_date, end_date")
+              .select("id, name, category, start_date")
               .eq("id", idNum)
               .maybeSingle(),
             supabase
@@ -90,7 +89,6 @@ export default function TournamentDetail() {
             name: `${t("nav.tournaments")} #${idNum}`,
             category: null,
             start_date: null,
-            end_date: null,
           });
         } else {
           setTournament(null);
@@ -233,7 +231,7 @@ export default function TournamentDetail() {
                 </p>
               )}
               <p className="text-xs text-gray-400 mt-1">
-                {formatDate(tournament.start_date)} – {formatDate(tournament.end_date)}
+                {formatDate(tournament.start_date)}
               </p>
             </div>
 

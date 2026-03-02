@@ -248,21 +248,24 @@ export default function TournamentDetail() {
               <button
                 type="button"
                 onClick={() => router.push(`/matches/create/manual?tournament=${idNum}`)}
-                className="bg-green-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-green-700 transition"
+                className="bg-green-600 !text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-green-700 transition"
+                style={{ WebkitTextFillColor: "#fff" }}
               >
                 + Crear partido
               </button>
               <button
                 type="button"
                 onClick={() => router.push(`/tournaments/${idNum}/generate-matches`)}
-                className="bg-indigo-600 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
+                className="bg-indigo-600 !text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-indigo-700 transition"
+                style={{ WebkitTextFillColor: "#fff" }}
               >
                 Crear partidos aleatorios
               </button>
               <button
                 type="button"
                 onClick={() => router.push(`/tournaments/edit/${idNum}`)}
-                className="bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-800 transition"
+                className="bg-gray-900 !text-white px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-800 transition"
+                style={{ WebkitTextFillColor: "#fff" }}
               >
                 Editar torneo
               </button>

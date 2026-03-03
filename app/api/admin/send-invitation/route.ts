@@ -32,6 +32,7 @@ type ExistingProfile = {
 type AuthUserLite = {
   id: string;
   email?: string | null;
+  last_sign_in_at?: string | null;
 };
 
 function getHost(req: Request): string {
@@ -99,7 +100,11 @@ async function findAuthUserByEmail(
       (data?.users || []).find((u) => String(u.email || "").trim().toLowerCase() === target) ||
       null;
     if (found) {
-      return { id: found.id, email: found.email || null };
+      return {
+        id: found.id,
+        email: found.email || null,
+        last_sign_in_at: found.last_sign_in_at || null,
+      };
     }
 
     if (!data?.nextPage) {
@@ -225,6 +230,7 @@ export async function POST(req: Request) {
     }
 
     let invitedUserId = sameTenantProfile?.id || null;
+    let invitedUserLastSignInAt: string | null = null;
 
     if (!invitedUserId) {
       const createResult = await supabaseAdmin.auth.admin.createUser({
@@ -232,12 +238,14 @@ export async function POST(req: Request) {
         password: generateTemporaryPassword(),
         email_confirm: true,
         user_metadata: {
+          requested_tenant_id: requesterProfile.tenant_id,
           tenant_id: requesterProfile.tenant_id,
           role,
           first_name: first_name || null,
           last_name: last_name || null,
         },
         app_metadata: {
+          requested_tenant_id: requesterProfile.tenant_id,
           tenant_id: requesterProfile.tenant_id,
           role,
         } as Record<string, unknown>,
@@ -258,6 +266,7 @@ export async function POST(req: Request) {
 
           if (existingAuthUser?.id) {
             invitedUserId = existingAuthUser.id;
+            invitedUserLastSignInAt = existingAuthUser.last_sign_in_at || null;
           } else {
             return NextResponse.json(
               { error: "El email ya está registrado. No se pudo recuperar el usuario." },
@@ -269,10 +278,59 @@ export async function POST(req: Request) {
         }
       } else {
         invitedUserId = createResult.data.user.id;
+        invitedUserLastSignInAt = createResult.data.user.last_sign_in_at || null;
       }
     }
 
-    const profilePayload: Record<string, unknown> = {
+    if (!invitedUserId) {
+      return NextResponse.json(
+        { error: "No se pudo resolver el usuario invitado." },
+        { status: 500 }
+      );
+    }
+
+    type ProfileState = {
+      id: string;
+      email: string | null;
+      role: string | null;
+      tenant_id: string | null;
+      active: boolean | null;
+      approval_status: string | null;
+      deleted_at: string | null;
+    };
+
+    const { data: profileById, error: profileByIdErr } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, role, tenant_id, active, approval_status, deleted_at")
+      .eq("id", invitedUserId)
+      .maybeSingle();
+
+    if (profileByIdErr) {
+      return NextResponse.json(
+        { error: "No se pudo validar el perfil del usuario." },
+        { status: 500 }
+      );
+    }
+
+    const currentProfile = (profileById as ProfileState | null) || null;
+    if (currentProfile && (currentProfile.role || "").toLowerCase() === "admin") {
+      return NextResponse.json(
+        { error: "Este email ya pertenece a un administrador." },
+        { status: 409 }
+      );
+    }
+
+    if (
+      currentProfile?.tenant_id &&
+      currentProfile.tenant_id !== requesterProfile.tenant_id
+    ) {
+      return NextResponse.json(
+        { error: "Este email ya pertenece a otro club." },
+        { status: 409 }
+      );
+    }
+
+    const profileInsert: Record<string, unknown> = {
       id: invitedUserId,
       email,
       role,
@@ -281,93 +339,62 @@ export async function POST(req: Request) {
       deleted_at: null,
       tenant_id: requesterProfile.tenant_id,
     };
-    if (first_name) profilePayload.first_name = first_name;
-    if (last_name) profilePayload.last_name = last_name;
+    if (first_name) profileInsert.first_name = first_name;
+    if (last_name) profileInsert.last_name = last_name;
 
-    const { error: upsertProfileError } = await supabaseAdmin
-      .from("profiles")
-      .upsert(profilePayload, { onConflict: "id" });
+    const requiresHardRepair =
+      !currentProfile || currentProfile.tenant_id !== requesterProfile.tenant_id;
 
-    if (upsertProfileError) {
-      const upsertMsg = String(upsertProfileError.message || "").toLowerCase();
-      const looksEmailConflict =
-        upsertMsg.includes("duplicate") ||
-        upsertMsg.includes("profiles_email") ||
-        upsertMsg.includes("email");
+    if (requiresHardRepair) {
+      if (invitedUserLastSignInAt && currentProfile?.tenant_id !== requesterProfile.tenant_id) {
+        return NextResponse.json(
+          { error: "El usuario ya activó su cuenta en otro contexto. Contactá soporte." },
+          { status: 409 }
+        );
+      }
 
-      if (looksEmailConflict) {
-        const { data: profileByEmail, error: profileByEmailErr } = await supabaseAdmin
+      if (currentProfile) {
+        const { error: deleteByIdErr } = await supabaseAdmin
           .from("profiles")
-          .select("id, tenant_id, role")
-          .ilike("email", email)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (profileByEmailErr || !profileByEmail) {
+          .delete()
+          .eq("id", invitedUserId);
+        if (deleteByIdErr) {
           return NextResponse.json(
             { error: "No se pudo preparar el perfil del usuario." },
             { status: 500 }
           );
         }
+      }
 
-        if (
-          profileByEmail.tenant_id &&
-          profileByEmail.tenant_id !== requesterProfile.tenant_id
-        ) {
-          return NextResponse.json(
-            { error: "Este email ya pertenece a otro club." },
-            { status: 409 }
-          );
-        }
+      // Limpia residuos sin tenant para el mismo email y evita colisiones de unique(email).
+      await supabaseAdmin
+        .from("profiles")
+        .delete()
+        .ilike("email", email)
+        .is("tenant_id", null);
 
-        if ((profileByEmail.role || "").toLowerCase() === "admin") {
-          return NextResponse.json(
-            { error: "Este email ya pertenece a un administrador." },
-            { status: 409 }
-          );
-        }
+      const { error: insertProfileErr } = await supabaseAdmin
+        .from("profiles")
+        .insert(profileInsert);
 
-        // Try to unify stale profile IDs so resend/reset remains idempotent.
-        if (invitedUserId && profileByEmail.id !== invitedUserId) {
-          await supabaseAdmin
-            .from("players")
-            .update({ user_id: invitedUserId })
-            .eq("user_id", profileByEmail.id)
-            .eq("tenant_id", requesterProfile.tenant_id);
-
-          const { error: deleteOldProfileErr } = await supabaseAdmin
-            .from("profiles")
-            .delete()
-            .eq("id", profileByEmail.id);
-
-          if (deleteOldProfileErr) {
-            // Last fallback: keep old id so we can continue and resend reset email.
-            invitedUserId = profileByEmail.id;
-          }
-        } else {
-          invitedUserId = profileByEmail.id;
-        }
-
-        const retryPayload = {
-          ...profilePayload,
-          id: invitedUserId,
-        };
-        const { error: retryUpsertErr } = await supabaseAdmin
-          .from("profiles")
-          .upsert(retryPayload, { onConflict: "id" });
-
-        if (retryUpsertErr) {
-          return NextResponse.json(
-            { error: "No se pudo preparar el perfil del usuario." },
-            { status: 500 }
-          );
-        }
-      } else {
+      if (insertProfileErr) {
         return NextResponse.json(
           { error: "No se pudo preparar el perfil del usuario." },
           { status: 500 }
         );
+      }
+    } else {
+      // Si ya existe en el mismo tenant pero está pendiente/inactivo, intenta aprobarlo.
+      if (
+        currentProfile.active !== true ||
+        (currentProfile.approval_status || "").toLowerCase() !== "approved"
+      ) {
+        const { error: approveErr } = await supabaseUser.rpc("approve_user", {
+          p_user_id: invitedUserId,
+        });
+        if (approveErr) {
+          console.warn("[send-invitation] approve_user warning", approveErr);
+        }
       }
     }
 

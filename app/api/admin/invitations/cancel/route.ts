@@ -150,13 +150,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const now = new Date().toISOString();
     const { error: profileUpdateErr } = await supabaseAdmin
       .from("profiles")
       .update({
         active: false,
         approval_status: "rejected",
-        deleted_at: now,
+        deleted_at: null,
       })
       .eq("id", target.id);
 

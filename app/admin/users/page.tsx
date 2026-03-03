@@ -411,9 +411,7 @@ export default function AdminUsersPage() {
 
       toast.success(payload.already_cancelled ? "La invitación ya estaba cancelada." : "Invitación cancelada.");
       await loadPendingInvitations();
-      if (inv.user_id) {
-        setRows((prev) => prev.filter((row) => row.id !== inv.user_id));
-      }
+      void load();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         toast.error("La cancelación tardó demasiado. Reintentá.");

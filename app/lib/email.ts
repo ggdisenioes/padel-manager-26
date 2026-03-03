@@ -5,6 +5,7 @@ const RESEND_MAX_RETRIES = Number(process.env.RESEND_MAX_RETRIES || "3");
 const RESEND_MIN_REQUEST_INTERVAL_MS = Number(
   process.env.RESEND_MIN_REQUEST_INTERVAL_MS || "600"
 );
+const RESEND_REQUEST_TIMEOUT_MS = Number(process.env.RESEND_REQUEST_TIMEOUT_MS || "12000");
 const EMAIL_REPLY_TO = String(process.env.EMAIL_REPLY_TO || "").trim();
 const EMAIL_UNSUBSCRIBE_MAILTO = String(process.env.EMAIL_UNSUBSCRIBE_MAILTO || "").trim();
 
@@ -230,25 +231,40 @@ export async function sendEmail(
     try {
       await waitForResendRateWindow();
 
-      const response = await fetch(RESEND_API_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from,
-          to,
-          subject,
-          html: htmlBody,
-          text,
-          ...(replyTo ? { reply_to: replyTo } : {}),
-          ...(tags.length ? { tags } : {}),
-          headers,
-        }),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RESEND_REQUEST_TIMEOUT_MS);
 
-      const raw = await response.text();
+      let response: Response;
+      let raw = "";
+      try {
+        response = await fetch(RESEND_API_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from,
+            to,
+            subject,
+            html: htmlBody,
+            text,
+            ...(replyTo ? { reply_to: replyTo } : {}),
+            ...(tags.length ? { tags } : {}),
+            headers,
+          }),
+          signal: controller.signal,
+        });
+        raw = await response.text();
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          throw new Error(`Resend timeout (${RESEND_REQUEST_TIMEOUT_MS}ms)`);
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
       let payload: { id?: string; message?: string; error?: { message?: string } } = {};
       if (raw) {
         try {
@@ -334,24 +350,23 @@ export async function sendUserInvitationEmail(opts: {
   to: string;
   inviteUrl: string;
   clubName?: string | null;
+  fromName?: string | null;
+  invitedName?: string | null;
   invitedRole?: "user" | "manager" | string;
 }) {
-  const { to, inviteUrl, clubName, invitedRole } = opts;
+  const { to, inviteUrl, clubName, fromName, invitedName } = opts;
   const safeClub = esc(clubName || "PadelX");
   const safeUrl = esc(inviteUrl);
-  const roleLabel =
-    invitedRole === "manager"
-      ? "Manager"
-      : invitedRole === "user"
-      ? "Usuario"
-      : "Usuario";
-
+  const safeName = esc(invitedName || "");
   const subject = `Invitación a ${safeClub}`;
+  const intro = safeName
+    ? `<p>Hola ${safeName}, recibiste una invitación para unirte a la plataforma de ${safeClub}.</p>`
+    : `<p>Recibiste una invitación para unirte a la plataforma de ${safeClub}.</p>`;
 
   const body = baseLayout(
     subject,
     `<h2>¡Bienvenido/a a ${safeClub}!</h2>
-    <p>Recibiste una invitación para unirte a la plataforma como <strong>${roleLabel}</strong>.</p>
+    ${intro}
     <p>Para activar tu cuenta, definí tu contraseña desde este botón:</p>
     <a class="btn" href="${safeUrl}">Crear contraseña y acceder</a>
     <p style="margin-top:14px;">Si no esperabas este correo, podés ignorarlo.</p>
@@ -359,7 +374,7 @@ export async function sendUserInvitationEmail(opts: {
   );
 
   return sendEmail(to, subject, body, {
-    fromName: clubName || "PadelX",
+    fromName: fromName || clubName || "PadelX",
     tags: [{ name: "template", value: "user_invitation" }],
   });
 }

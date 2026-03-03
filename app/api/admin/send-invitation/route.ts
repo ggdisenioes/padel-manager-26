@@ -8,11 +8,12 @@ import { sendUserInvitationEmail } from "@/lib/email";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const INVITE_NETWORK_TIMEOUT_MS = Number(process.env.INVITE_NETWORK_TIMEOUT_MS || "12000");
 
 const inviteSchema = z.object({
+  first_name: z.string().trim().min(1, "Nombre requerido.").max(100),
   email: z.string().trim().email().transform((v) => v.toLowerCase()),
   role: z.enum(["user", "manager"]).default("user"),
-  first_name: z.string().trim().max(100).optional(),
   last_name: z.string().trim().max(100).optional(),
 });
 
@@ -56,6 +57,22 @@ function generateTemporaryPassword(): string {
   // Strong temporary password. User will replace it from recovery link.
   const token = crypto.randomBytes(24).toString("base64url");
   return `Tmp!${token}A1`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timeout`));
+        }, INVITE_NETWORK_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function POST(req: Request) {
@@ -228,12 +245,14 @@ export async function POST(req: Request) {
     const origin = getOrigin(req);
     const redirectTo = `${origin}/reset-password`;
 
-    const { data: linkData, error: linkError } =
-      await supabaseAdmin.auth.admin.generateLink({
+    const { data: linkData, error: linkError } = await withTimeout(
+      supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email,
         options: { redirectTo },
-      });
+      }),
+      "generate-link"
+    );
 
     if (linkError || !linkData?.properties?.action_link) {
       return NextResponse.json(
@@ -248,21 +267,49 @@ export async function POST(req: Request) {
       .eq("id", requesterProfile.tenant_id)
       .maybeSingle();
 
-    const clubName = tenantData?.name || "TWINCO";
+    const tenantName = String(tenantData?.name || "").trim();
+    const host = getHost(req);
+    const isTwincoTenant =
+      host.includes("twinco.padelx.es") || tenantName.toLowerCase() === "twinco";
+    const clubName = isTwincoTenant ? "Twinco Padel Manager" : tenantName || "PadelX";
 
-    const sent = await sendUserInvitationEmail({
-      to: email,
-      inviteUrl: linkData.properties.action_link,
-      clubName,
-      invitedRole: role,
+    const sent = await withTimeout(
+      sendUserInvitationEmail({
+        to: email,
+        inviteUrl: linkData.properties.action_link,
+        clubName,
+        fromName: clubName,
+        invitedName: first_name,
+        invitedRole: role,
+      }),
+      "send-invitation-email"
+    ).catch((mailErr) => {
+      console.error("[send-invitation] invitation email error", mailErr);
+      return false;
     });
 
-    if (!sent) {
+    let delivered = sent;
+    if (!delivered) {
       // Fallback to Supabase default recovery template to avoid blocking.
       const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: false },
       });
-      await supabasePublic.auth.resetPasswordForEmail(email, { redirectTo });
+      const fallback = await withTimeout(
+        supabasePublic.auth.resetPasswordForEmail(email, { redirectTo }),
+        "fallback-reset-email"
+      ).catch((fallbackErr) => {
+        console.error("[send-invitation] fallback reset email error", fallbackErr);
+        return null;
+      });
+
+      delivered = Boolean(fallback && !fallback.error);
+    }
+
+    if (!delivered) {
+      return NextResponse.json(
+        { error: "No se pudo enviar la invitación. Reintentá en unos segundos." },
+        { status: 502 }
+      );
     }
 
     try {
@@ -274,6 +321,7 @@ export async function POST(req: Request) {
         metadata: {
           invited_email: email,
           invited_role: role,
+          invited_name: first_name,
         },
       });
     } catch (logErr) {

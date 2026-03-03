@@ -65,6 +65,7 @@ export default function AdminUsersPage() {
   const [mainTab, setMainTab] = useState<MainTabKey>("manage");
 
   const [inviteForm, setInviteForm] = useState({
+    name: "",
     email: "",
     role: "user" as "user" | "manager",
   });
@@ -206,6 +207,12 @@ export default function AdminUsersPage() {
       return;
     }
 
+    const name = inviteForm.name.trim();
+    if (!name) {
+      toast.error("Completá el nombre.");
+      return;
+    }
+
     setSendingInvitation(true);
     try {
       const {
@@ -217,6 +224,9 @@ export default function AdminUsersPage() {
         throw new Error("Sesión inválida.");
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const response = await fetch("/api/admin/send-invitation", {
         method: "POST",
         headers: {
@@ -224,10 +234,12 @@ export default function AdminUsersPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          first_name: name,
           email: inviteForm.email.trim().toLowerCase(),
           role: inviteForm.role,
         }),
-      });
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -235,11 +247,15 @@ export default function AdminUsersPage() {
       }
 
       toast.success("Invitación enviada.");
-      setInviteForm({ email: "", role: "user" });
+      setInviteForm({ name: "", email: "", role: "user" });
       setMainTab("manage");
       void load();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error enviando invitación.");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        toast.error("La invitación tardó demasiado. Reintentá.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Error enviando invitación.");
+      }
     } finally {
       setSendingInvitation(false);
     }
@@ -442,6 +458,19 @@ export default function AdminUsersPage() {
                 Enviá una invitación por email para que el usuario cree su contraseña y acceda.
               </p>
               <form onSubmit={handleSendInvitation} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Nombre</label>
+                  <input
+                    type="text"
+                    value={inviteForm.name}
+                    onChange={(e) =>
+                      setInviteForm((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Nombre"
+                    required
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Email</label>
                   <input

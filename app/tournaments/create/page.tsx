@@ -8,6 +8,7 @@ import Card from "../../components/Card";
 import { logAction } from "../../lib/audit";
 import { useTenantPlan } from "../../hooks/useTenantPlan";
 import { useRole } from "../../hooks/useRole";
+import { supabase } from "../../lib/supabase";
 
 type TournamentInsert = {
   name: string;

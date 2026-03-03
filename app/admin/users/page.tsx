@@ -419,7 +419,6 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -461,8 +460,8 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <main className="max-w-6xl mx-auto p-6 space-y-6">
-      <header className="flex items-start justify-between gap-4">
+    <main className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Gestión de usuarios</h1>
           <p className="text-sm text-gray-600">
@@ -471,40 +470,40 @@ export default function AdminUsersPage() {
         </div>
         <button
           onClick={() => void load()}
-          className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 transition"
+          className="w-full sm:w-auto bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 transition"
         >
           Actualizar
         </button>
       </header>
 
-      <div className="-mx-1 px-1 overflow-x-auto border-b border-gray-200">
-        <div className="min-w-max flex gap-2 sm:gap-4">
+      <div className="border-b border-gray-200 pb-2 sm:pb-0">
+        <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-4">
           <button
             onClick={() => setMainTab("manage")}
-            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
+            className={`w-full whitespace-nowrap px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border rounded-md sm:rounded-none sm:border-0 sm:border-b-2 transition ${
               mainTab === "manage"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-600 hover:text-gray-800"
+                ? "border-blue-600 text-blue-600 bg-blue-50 sm:bg-transparent"
+                : "border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 sm:border-transparent sm:hover:bg-transparent"
             }`}
           >
             👥 Administrar Usuarios
           </button>
           <button
             onClick={() => setMainTab("create")}
-            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
+            className={`w-full whitespace-nowrap px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border rounded-md sm:rounded-none sm:border-0 sm:border-b-2 transition ${
               mainTab === "create"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-600 hover:text-gray-800"
+                ? "border-blue-600 text-blue-600 bg-blue-50 sm:bg-transparent"
+                : "border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 sm:border-transparent sm:hover:bg-transparent"
             }`}
           >
             ➕ Crear Usuario
           </button>
           <button
             onClick={() => setMainTab("invites")}
-            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
+            className={`w-full whitespace-nowrap px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border rounded-md sm:rounded-none sm:border-0 sm:border-b-2 transition ${
               mainTab === "invites"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-600 hover:text-gray-800"
+                ? "border-blue-600 text-blue-600 bg-blue-50 sm:bg-transparent"
+                : "border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 sm:border-transparent sm:hover:bg-transparent"
             }`}
           >
             📨 Invitaciones enviadas
@@ -512,10 +511,10 @@ export default function AdminUsersPage() {
           {canAdminActions && (
             <button
               onClick={() => setMainTab("logs")}
-              className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
+              className={`w-full whitespace-nowrap px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base font-semibold border rounded-md sm:rounded-none sm:border-0 sm:border-b-2 transition ${
                 mainTab === "logs"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-600 hover:text-gray-800"
+                  ? "border-blue-600 text-blue-600 bg-blue-50 sm:bg-transparent"
+                  : "border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50 sm:border-transparent sm:hover:bg-transparent"
               }`}
             >
               📋 Logs
@@ -594,7 +593,7 @@ export default function AdminUsersPage() {
 
       {mainTab === "invites" && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 py-4 sm:px-6 border-b border-gray-100 flex items-start justify-between gap-3">
+          <div className="px-4 py-4 sm:px-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
               <h2 className="text-lg sm:text-xl font-bold">Invitaciones enviadas</h2>
               <p className="text-sm text-gray-600">
@@ -604,7 +603,7 @@ export default function AdminUsersPage() {
             <button
               onClick={() => void loadPendingInvitations()}
               disabled={loadingInvitations}
-              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 disabled:opacity-60 transition"
+              className="w-full sm:w-auto bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 disabled:opacity-60 transition"
             >
               {loadingInvitations ? "Actualizando..." : "Actualizar"}
             </button>
@@ -630,23 +629,30 @@ export default function AdminUsersPage() {
                   className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 border-b border-gray-100 gap-3 md:items-center"
                 >
                   <div className="md:col-span-3">
+                    <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Nombre</p>
                     <p className="text-sm font-semibold text-gray-900">{inv.name || "Sin nombre"}</p>
                     <p className="text-xs text-gray-500 break-all">{inv.user_id || "Sin user_id"}</p>
                   </div>
 
-                  <div className="md:col-span-4 text-sm text-gray-700 break-all">{inv.email}</div>
+                  <div className="md:col-span-4 text-sm text-gray-700 break-all">
+                    <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Email</p>
+                    {inv.email}
+                  </div>
 
                   <div className="md:col-span-1">
+                    <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
                     <span className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 uppercase">
                       {inv.role === "manager" ? "Manager" : "Usuario"}
                     </span>
                   </div>
 
                   <div className="md:col-span-2 text-sm text-gray-700">
+                    <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Invitación</p>
                     {new Date(inv.invited_at).toLocaleString()}
                   </div>
 
                   <div className="md:col-span-2">
+                    <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Estado</p>
                     <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">
                       Pendiente de activación
                     </span>
@@ -694,7 +700,7 @@ export default function AdminUsersPage() {
 
       {mainTab === "manage" && (
         <>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             {([
               ["pending", "Pendientes"],
               ["approved", "Aprobados"],
@@ -705,7 +711,7 @@ export default function AdminUsersPage() {
               <button
                 key={k}
                 onClick={() => setStatusTab(k)}
-                className={`px-3 py-2 rounded-md text-sm font-semibold border ${
+                className={`w-full sm:w-auto px-3 py-2 rounded-md text-sm font-semibold border ${
                   statusTab === k
                     ? "bg-gray-900 text-white border-gray-900"
                     : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -729,207 +735,209 @@ export default function AdminUsersPage() {
             {filtered.length === 0 ? (
               <div className="p-6 text-gray-500">No hay usuarios en esta sección.</div>
             ) : (
-              filtered.map((u) => {
-                const status = statusFromRow(u);
-                const isMe = meId === u.id;
-                const isTargetAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
-                const linkedPlayerId = userPlayerMap[u.id] ?? null;
-                const availablePlayers = players.filter(
-                  (p) => p.user_id === null || p.user_id === u.id
-                );
+              <div className="p-3 md:p-0 space-y-3 md:space-y-0">
+                {filtered.map((u) => {
+                  const status = statusFromRow(u);
+                  const isMe = meId === u.id;
+                  const isTargetAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
+                  const linkedPlayerId = userPlayerMap[u.id] ?? null;
+                  const availablePlayers = players.filter(
+                    (p) => p.user_id === null || p.user_id === u.id
+                  );
 
-                return (
-                  <div
-                    key={u.id}
-                    className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 border-b border-gray-100 items-start md:items-center gap-3"
-                  >
-                    <div className="md:col-span-3">
-                      <p className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
-                        {displayName(u)}
-                        {isMe && (
-                          <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                            Vos
-                          </span>
-                        )}
-                        {isTargetAdmin && (
-                          <span className="text-[10px] px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                            Admin
-                          </span>
-                        )}
-                        {u.active === false && (
-                          <span className="text-[10px] px-2 py-1 rounded-full bg-red-100 text-red-700">
-                            {u.deleted_at ? "Eliminado" : "Deshabilitado"}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">{u.id}</p>
-                    </div>
+                  return (
+                    <div
+                      key={u.id}
+                      className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 border border-gray-100 rounded-lg md:rounded-none md:border-0 md:border-b md:border-gray-100 items-start md:items-center gap-3"
+                    >
+                      <div className="md:col-span-3">
+                        <p className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                          {displayName(u)}
+                          {isMe && (
+                            <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-700">
+                              Vos
+                            </span>
+                          )}
+                          {isTargetAdmin && (
+                            <span className="text-[10px] px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                              Admin
+                            </span>
+                          )}
+                          {u.active === false && (
+                            <span className="text-[10px] px-2 py-1 rounded-full bg-red-100 text-red-700">
+                              {u.deleted_at ? "Eliminado" : "Deshabilitado"}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500 break-all md:truncate">{u.id}</p>
+                      </div>
 
-                    <div className="md:col-span-2 text-sm text-gray-700 min-w-0">
-                      <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Email</p>
-                      <p className="break-all">{u.email ?? "—"}</p>
-                    </div>
+                      <div className="md:col-span-2 text-sm text-gray-700 min-w-0">
+                        <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Email</p>
+                        <p className="break-all">{u.email ?? "—"}</p>
+                      </div>
 
-                    <div className="md:col-span-1">
-                      <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
-                      {isTargetAdmin ? (
-                        <span className="text-sm text-gray-700">admin</span>
-                      ) : (
-                        <select
-                          value={(u.role ?? "user").toString().toLowerCase()}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "manager" || v === "user") void changeRole(u.id, v);
-                          }}
-                          className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+                      <div className="md:col-span-1">
+                        <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
+                        {isTargetAdmin ? (
+                          <span className="text-sm text-gray-700">admin</span>
+                        ) : (
+                          <select
+                            value={(u.role ?? "user").toString().toLowerCase()}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === "manager" || v === "user") void changeRole(u.id, v);
+                            }}
+                            className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+                          >
+                            <option value="user">user</option>
+                            <option value="manager">manager</option>
+                          </select>
+                        )}
+                      </div>
+
+                      <div className="md:col-span-1">
+                        <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Estado</p>
+                        <span
+                          className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                            status === "pending"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : status === "approved"
+                              ? "bg-green-100 text-green-800"
+                              : status === "deleted"
+                              ? "bg-gray-200 text-gray-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
                         >
-                          <option value="user">user</option>
-                          <option value="manager">manager</option>
-                        </select>
-                      )}
-                    </div>
-
-                    <div className="md:col-span-1">
-                      <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Estado</p>
-                      <span
-                        className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                          status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
+                          {status === "pending"
+                            ? "Pendiente"
                             : status === "approved"
-                            ? "bg-green-100 text-green-800"
-                            : status === "deleted"
-                            ? "bg-gray-200 text-gray-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {status === "pending"
-                          ? "Pendiente"
-                          : status === "approved"
-                          ? "Aprobado"
-                          : status === "rejected"
-                          ? "Rechazado"
-                          : "Eliminado"}
-                      </span>
-                    </div>
+                            ? "Aprobado"
+                            : status === "rejected"
+                            ? "Rechazado"
+                            : "Eliminado"}
+                        </span>
+                      </div>
 
-                    <div className="md:col-span-3">
-                      <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">
-                        Jugador vinculado
-                      </p>
-                      {status === "approved" || status === "pending" ? (
-                        <select
-                          value={linkedPlayerId ?? ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            void linkPlayer(u.id, val ? Number(val) : null);
-                          }}
-                          className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
-                        >
-                          <option value="">Sin vincular</option>
-                          {availablePlayers.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : linkedPlayerId ? (
-                        <span className="text-sm text-gray-600">{playerNameMap[linkedPlayerId]}</span>
-                      ) : (
-                        <span className="text-sm text-gray-400">—</span>
-                      )}
-                    </div>
-
-                    <div className="md:col-span-2 flex flex-col sm:flex-row md:justify-end gap-2 flex-wrap">
-                      <p className="md:hidden text-[11px] font-bold uppercase text-gray-500">Acciones</p>
-                      {status === "pending" && (
-                        <>
-                          <button
-                            onClick={() => approve(u.id)}
-                            className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                      <div className="md:col-span-3">
+                        <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">
+                          Jugador vinculado
+                        </p>
+                        {status === "approved" || status === "pending" ? (
+                          <select
+                            value={linkedPlayerId ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              void linkPlayer(u.id, val ? Number(val) : null);
+                            }}
+                            className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
                           >
-                            Aprobar
-                          </button>
-                          <button
-                            onClick={() => reject(u.id)}
-                            className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition"
-                          >
-                            Rechazar
-                          </button>
-                        </>
-                      )}
+                            <option value="">Sin vincular</option>
+                            {availablePlayers.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : linkedPlayerId ? (
+                          <span className="text-sm text-gray-600">{playerNameMap[linkedPlayerId]}</span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </div>
 
-                      {status === "deleted" && (
-                        <button
-                          onClick={() => setActive(u.id, true)}
-                          className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
-                        >
-                          Rehabilitar
-                        </button>
-                      )}
-
-                      {status !== "pending" && status !== "deleted" && (
-                        <>
-                          {u.active === false ? (
-                            <button
-                              onClick={() => setActive(u.id, true)}
-                              className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
-                            >
-                              Habilitar
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setActive(u.id, false)}
-                              disabled={isMe || isTargetAdmin}
-                              title={
-                                isMe
-                                  ? "No podés deshabilitarte a vos mismo"
-                                  : isTargetAdmin
-                                  ? "No se deshabilita el admin principal desde aquí"
-                                  : ""
-                              }
-                              className="w-full sm:w-auto bg-gray-900 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-black transition disabled:opacity-40"
-                            >
-                              Deshabilitar
-                            </button>
-                          )}
-
-                          {canAdminActions && !u.deleted_at && u.active !== false && (
-                            <button
-                              onClick={() => softDelete(u.id)}
-                              disabled={isMe || isTargetAdmin}
-                              title={
-                                isMe
-                                  ? "No podés eliminarte a vos mismo"
-                                  : isTargetAdmin
-                                  ? "No se elimina el admin principal desde aquí"
-                                  : "Eliminar = deshabilitar (reversible)"
-                              }
-                              className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition disabled:opacity-40"
-                            >
-                              Eliminar
-                            </button>
-                          )}
-
-                          {status === "rejected" && (
+                      <div className="md:col-span-2 flex flex-col sm:flex-row md:justify-end gap-2 flex-wrap">
+                        <p className="md:hidden text-[11px] font-bold uppercase text-gray-500">Acciones</p>
+                        {status === "pending" && (
+                          <>
                             <button
                               onClick={() => approve(u.id)}
                               className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
                             >
                               Aprobar
                             </button>
-                          )}
-                        </>
-                      )}
+                            <button
+                              onClick={() => reject(u.id)}
+                              className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition"
+                            >
+                              Rechazar
+                            </button>
+                          </>
+                        )}
+
+                        {status === "deleted" && (
+                          <button
+                            onClick={() => setActive(u.id, true)}
+                            className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                          >
+                            Rehabilitar
+                          </button>
+                        )}
+
+                        {status !== "pending" && status !== "deleted" && (
+                          <>
+                            {u.active === false ? (
+                              <button
+                                onClick={() => setActive(u.id, true)}
+                                className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                              >
+                                Habilitar
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActive(u.id, false)}
+                                disabled={isMe || isTargetAdmin}
+                                title={
+                                  isMe
+                                    ? "No podés deshabilitarte a vos mismo"
+                                    : isTargetAdmin
+                                    ? "No se deshabilita el admin principal desde aquí"
+                                    : ""
+                                }
+                                className="w-full sm:w-auto bg-gray-900 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-black transition disabled:opacity-40"
+                              >
+                                Deshabilitar
+                              </button>
+                            )}
+
+                            {canAdminActions && !u.deleted_at && u.active !== false && (
+                              <button
+                                onClick={() => softDelete(u.id)}
+                                disabled={isMe || isTargetAdmin}
+                                title={
+                                  isMe
+                                    ? "No podés eliminarte a vos mismo"
+                                    : isTargetAdmin
+                                    ? "No se elimina el admin principal desde aquí"
+                                    : "Eliminar = deshabilitar (reversible)"
+                                }
+                                className="w-full sm:w-auto bg-red-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-red-700 transition disabled:opacity-40"
+                              >
+                                Eliminar
+                              </button>
+                            )}
+
+                            {status === "rejected" && (
+                              <button
+                                onClick={() => approve(u.id)}
+                                className="w-full sm:w-auto bg-green-600 text-white px-3 py-2 rounded-md text-xs font-semibold hover:bg-green-700 transition"
+                              >
+                                Aprobar
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
 
           <p className="text-xs text-gray-500">
-            Nota: "Eliminar" es una baja lógica (reversible). El usuario pasa a la pestaña
-            "Eliminados" y puede ser rehabilitado.
+            Nota: &quot;Eliminar&quot; es una baja lógica (reversible). El usuario pasa a la pestaña
+            &quot;Eliminados&quot; y puede ser rehabilitado.
           </p>
         </>
       )}

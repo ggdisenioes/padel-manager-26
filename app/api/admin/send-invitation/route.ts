@@ -277,6 +277,8 @@ export async function POST(req: Request) {
       email,
       role,
       active: true,
+      approval_status: "approved",
+      deleted_at: null,
       tenant_id: requesterProfile.tenant_id,
     };
     if (first_name) profilePayload.first_name = first_name;
@@ -287,10 +289,86 @@ export async function POST(req: Request) {
       .upsert(profilePayload, { onConflict: "id" });
 
     if (upsertProfileError) {
-      return NextResponse.json(
-        { error: "No se pudo preparar el perfil del usuario." },
-        { status: 500 }
-      );
+      const upsertMsg = String(upsertProfileError.message || "").toLowerCase();
+      const looksEmailConflict =
+        upsertMsg.includes("duplicate") ||
+        upsertMsg.includes("profiles_email") ||
+        upsertMsg.includes("email");
+
+      if (looksEmailConflict) {
+        const { data: profileByEmail, error: profileByEmailErr } = await supabaseAdmin
+          .from("profiles")
+          .select("id, tenant_id, role")
+          .ilike("email", email)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (profileByEmailErr || !profileByEmail) {
+          return NextResponse.json(
+            { error: "No se pudo preparar el perfil del usuario." },
+            { status: 500 }
+          );
+        }
+
+        if (
+          profileByEmail.tenant_id &&
+          profileByEmail.tenant_id !== requesterProfile.tenant_id
+        ) {
+          return NextResponse.json(
+            { error: "Este email ya pertenece a otro club." },
+            { status: 409 }
+          );
+        }
+
+        if ((profileByEmail.role || "").toLowerCase() === "admin") {
+          return NextResponse.json(
+            { error: "Este email ya pertenece a un administrador." },
+            { status: 409 }
+          );
+        }
+
+        // Try to unify stale profile IDs so resend/reset remains idempotent.
+        if (invitedUserId && profileByEmail.id !== invitedUserId) {
+          await supabaseAdmin
+            .from("players")
+            .update({ user_id: invitedUserId })
+            .eq("user_id", profileByEmail.id)
+            .eq("tenant_id", requesterProfile.tenant_id);
+
+          const { error: deleteOldProfileErr } = await supabaseAdmin
+            .from("profiles")
+            .delete()
+            .eq("id", profileByEmail.id);
+
+          if (deleteOldProfileErr) {
+            // Last fallback: keep old id so we can continue and resend reset email.
+            invitedUserId = profileByEmail.id;
+          }
+        } else {
+          invitedUserId = profileByEmail.id;
+        }
+
+        const retryPayload = {
+          ...profilePayload,
+          id: invitedUserId,
+        };
+        const { error: retryUpsertErr } = await supabaseAdmin
+          .from("profiles")
+          .upsert(retryPayload, { onConflict: "id" });
+
+        if (retryUpsertErr) {
+          return NextResponse.json(
+            { error: "No se pudo preparar el perfil del usuario." },
+            { status: 500 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { error: "No se pudo preparar el perfil del usuario." },
+          { status: 500 }
+        );
+      }
     }
 
     const origin = getOrigin(req);

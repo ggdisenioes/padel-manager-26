@@ -5,18 +5,15 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
 import Card from "../../components/Card";
-import { supabase } from "../../lib/supabase";
 import { logAction } from "../../lib/audit";
 import { useTenantPlan } from "../../hooks/useTenantPlan";
 import { useRole } from "../../hooks/useRole";
-import { waitForSession } from "../../lib/auth-session";
 
 type TournamentInsert = {
   name: string;
   category: string;
   status: string;
   start_date: string | null;
-  tenant_id: string;
 };
 
 export default function CreateTournament() {
@@ -73,42 +70,18 @@ export default function CreateTournament() {
       category: finalCategory,
       status,
       start_date: startDate ? startDate : null,
-      tenant_id: "",
     };
 
-    const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
-    if (!session?.user?.id) {
-      toast.error("Sesión no válida. Volvé a iniciar sesión.");
-      setLoading(false);
-      return;
-    }
+    const response = await fetch("/api/tournaments/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => null);
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", session.user.id)
-      .single();
-
-    if (profileError || !profile?.tenant_id) {
-      console.error("[CreateTournament] profile tenant error:", profileError);
-      toast.error("No se pudo determinar el tenant del usuario.");
-      setLoading(false);
-      return;
-    }
-
-    payload.tenant_id = profile.tenant_id;
-
-    const { data, error } = await supabase
-      .from("tournaments")
-      .insert(payload)
-      .select("id")
-      .single();
-
-    if (error) {
-      console.error(error);
-      const msg = error.message?.includes('PLAN_LIMIT')
-        ? error.message.replace('PLAN_LIMIT: ', '')
-        : "Error al crear el torneo";
+    if (!response.ok || !result?.data?.id) {
+      const msg = result?.error || "Error al crear el torneo";
+      console.error("[CreateTournament] API error:", msg);
       toast.error(msg);
       setLoading(false);
       return;
@@ -119,7 +92,7 @@ export default function CreateTournament() {
       await logAction({
         action: "CREATE_TOURNAMENT",
         entity: "tournament",
-        entityId: data.id,
+        entityId: result.data.id,
         metadata: payload,
       });
     } catch (e) {
@@ -131,7 +104,7 @@ export default function CreateTournament() {
     setLoading(false);
 
     // Redirigir a edición del torneo recién creado
-    router.push(`/tournaments/edit/${data.id}`);
+    router.push(`/tournaments/edit/${result.data.id}`);
   };
 
   if (roleLoading) {

@@ -9,12 +9,14 @@ import { supabase } from "../../lib/supabase";
 import { logAction } from "../../lib/audit";
 import { useTenantPlan } from "../../hooks/useTenantPlan";
 import { useRole } from "../../hooks/useRole";
+import { waitForSession } from "../../lib/auth-session";
 
 type TournamentInsert = {
   name: string;
   category: string;
   status: string;
   start_date: string | null;
+  tenant_id: string;
 };
 
 export default function CreateTournament() {
@@ -71,7 +73,30 @@ export default function CreateTournament() {
       category: finalCategory,
       status,
       start_date: startDate ? startDate : null,
+      tenant_id: "",
     };
+
+    const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
+    if (!session?.user?.id) {
+      toast.error("Sesión no válida. Volvé a iniciar sesión.");
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", session.user.id)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error("[CreateTournament] profile tenant error:", profileError);
+      toast.error("No se pudo determinar el tenant del usuario.");
+      setLoading(false);
+      return;
+    }
+
+    payload.tenant_id = profile.tenant_id;
 
     const { data, error } = await supabase
       .from("tournaments")

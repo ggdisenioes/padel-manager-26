@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { supabase } from "../../lib/supabase";
+import { waitForSession } from "@/lib/auth-session";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -107,16 +108,14 @@ export default function AdminUsersPage() {
   const load = async () => {
     setLoading(true);
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+    const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
+    const user = session?.user || null;
 
-    if (userErr || !user) {
+    if (!user) {
       setLoading(false);
       setCanAccess(false);
       setCanAdminActions(false);
-      toast.error("No se pudo leer tu sesión.");
+      toast.error("No se pudo leer tu sesión. Reintentá en unos segundos.");
       return;
     }
 
@@ -527,6 +526,20 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     void load();
+  }, []);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        void load();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

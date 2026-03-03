@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
+import { waitForSession } from "@/lib/auth-session";
 
 export type UserRole = "admin" | "manager" | "super_admin" | "user";
 
@@ -57,9 +58,7 @@ export function useRole() {
 
     const loadRole = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
 
         if (!session?.user?.id) {
           if (active) {
@@ -145,10 +144,23 @@ export function useRole() {
       }
     };
 
-    loadRole();
+    void loadRole();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (
+        event === "SIGNED_IN" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "SIGNED_OUT"
+      ) {
+        void loadRole();
+      }
+    });
 
     return () => {
       active = false;
+      subscription.unsubscribe();
     };
   }, []);
 

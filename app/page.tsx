@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { waitForSession } from "@/lib/auth-session";
 import { useRole } from "@/hooks/useRole";
 import MatchCard from "@/components/matches/MatchCard";
 import toast from "react-hot-toast";
@@ -144,6 +145,7 @@ export default function DashboardPage() {
   const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
   const [recentResults, setRecentResults] = useState<FinishedMatch[]>([]);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [chart7d, setChart7d] = useState<
     { key: string; label: string; pending: number; finished: number; total: number }[]
   >([]);
@@ -283,6 +285,25 @@ export default function DashboardPage() {
   }, [canManageUsers]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onOnline = () => setRefreshNonce((n) => n + 1);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshNonce((n) => n + 1);
+      }
+    };
+
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (roleLoading) return;
 
     let active = true;
@@ -291,152 +312,197 @@ export default function DashboardPage() {
       setLoadingDashboard(true);
 
       try {
+        const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
+        if (!session?.user?.id) {
+          console.warn("[dashboard] no session available after retries");
+          return;
+        }
+
         const start7d = new Date();
         start7d.setDate(start7d.getDate() - 6);
         start7d.setHours(0, 0, 0, 0);
         const nowIso = new Date().toISOString();
 
+        const safeQuery = async <T,>(label: string, query: Promise<T>): Promise<T | null> => {
+          try {
+            return await query;
+          } catch (error) {
+            console.error(`[dashboard] ${label} transport error:`, error);
+            return null;
+          }
+        };
+
         const [
-          { data: playersData, error: playersErr },
-          { data: tournamentsData, error: tournamentsErr },
-          { data: pendingMatches, count: pendingCount, error: pendingErr },
-          { data: matches7d, error: m7Err },
-          { data: finishedMatches, error: finishedErr },
-          { data: logs, error: logsErr },
-          { data: matchesLite, error: matchesLiteErr },
-          { count: overdueCount, error: overdueErr },
+          playersRes,
+          tournamentsRes,
+          pendingRes,
+          matches7dRes,
+          finishedRes,
+          logsRes,
+          matchesLiteRes,
+          overdueRes,
         ] = await Promise.all([
-          supabase.from("players").select("id, name").eq("is_approved", true),
-          supabase.from("tournaments").select("id, name"),
-          supabase
-            .from("matches")
-            .select(
-              "id, start_time, tournament_id, round_name, place, court, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, winner, score",
-              { count: "exact" }
-            )
-            .eq("winner", "pending")
-            .order("start_time", { ascending: true })
-            .limit(5),
-          supabase
-            .from("matches")
-            .select("start_time, winner")
-            .gte("start_time", start7d.toISOString()),
-          supabase
-            .from("matches")
-            .select("id, tournament_id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
-            .neq("winner", "pending")
-            .order("created_at", { ascending: false })
-            .limit(5),
-          supabase
-            .from("action_logs")
-            .select("id, action, entity, entity_id, user_email, created_at")
-            .order("created_at", { ascending: false })
-            .limit(6),
-          supabase
-            .from("matches")
-            .select("tournament_id, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id"),
-          supabase
-            .from("matches")
-            .select("id", { count: "exact", head: true })
-            .eq("winner", "pending")
-            .lt("start_time", nowIso),
+          safeQuery("players query", supabase.from("players").select("id, name").eq("is_approved", true)),
+          safeQuery("tournaments query", supabase.from("tournaments").select("id, name")),
+          safeQuery(
+            "pending matches query",
+            supabase
+              .from("matches")
+              .select(
+                "id, start_time, tournament_id, round_name, place, court, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, winner, score",
+                { count: "exact" }
+              )
+              .eq("winner", "pending")
+              .order("start_time", { ascending: true })
+              .limit(5)
+          ),
+          safeQuery(
+            "matches 7d query",
+            supabase
+              .from("matches")
+              .select("start_time, winner")
+              .gte("start_time", start7d.toISOString())
+          ),
+          safeQuery(
+            "finished matches query",
+            supabase
+              .from("matches")
+              .select("id, tournament_id, start_time, round_name, place, court, score, winner, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id, created_at")
+              .neq("winner", "pending")
+              .order("created_at", { ascending: false })
+              .limit(5)
+          ),
+          safeQuery(
+            "logs query",
+            supabase
+              .from("action_logs")
+              .select("id, action, entity, entity_id, user_email, created_at")
+              .order("created_at", { ascending: false })
+              .limit(6)
+          ),
+          safeQuery(
+            "matches lite query",
+            supabase
+              .from("matches")
+              .select("tournament_id, player_1_a, player_2_a, player_1_b, player_2_b, player_1_a_id, player_2_a_id, player_1_b_id, player_2_b_id")
+          ),
+          safeQuery(
+            "overdue matches query",
+            supabase
+              .from("matches")
+              .select("id", { count: "exact", head: true })
+              .eq("winner", "pending")
+              .lt("start_time", nowIso)
+          ),
         ]);
 
         if (!active) return;
 
-        if (playersErr) console.error("[dashboard] players error:", playersErr);
-        if (tournamentsErr) console.error("[dashboard] tournaments error:", tournamentsErr);
-        if (pendingErr) console.error("[dashboard] pending matches error:", pendingErr);
-        if (m7Err) console.error("[dashboard] chart matches error:", m7Err);
-        if (finishedErr) console.error("[dashboard] finished matches error:", finishedErr);
-        if (logsErr) console.error("[dashboard] logs error:", logsErr);
-        if (matchesLiteErr) console.error("[dashboard] matches lite error:", matchesLiteErr);
-        if (overdueErr) console.error("[dashboard] overdue count error:", overdueErr);
+        if (playersRes?.error) console.error("[dashboard] players error:", playersRes.error);
+        if (tournamentsRes?.error) console.error("[dashboard] tournaments error:", tournamentsRes.error);
+        if (pendingRes?.error) console.error("[dashboard] pending matches error:", pendingRes.error);
+        if (matches7dRes?.error) console.error("[dashboard] chart matches error:", matches7dRes.error);
+        if (finishedRes?.error) console.error("[dashboard] finished matches error:", finishedRes.error);
+        if (logsRes?.error) console.error("[dashboard] logs error:", logsRes.error);
+        if (matchesLiteRes?.error) console.error("[dashboard] matches lite error:", matchesLiteRes.error);
+        if (overdueRes?.error) console.error("[dashboard] overdue count error:", overdueRes.error);
 
-        const approvedPlayers = (playersData || []) as Array<{ id: number; name: string }>;
-        const tournaments = (tournamentsData || []) as Array<{ id: number; name: string }>;
+        const approvedPlayers = ((playersRes?.data || []) as Array<{ id: number; name: string }>);
+        const tournaments = ((tournamentsRes?.data || []) as Array<{ id: number; name: string }>);
 
-        const pMap: PlayerMap = {};
-        for (const player of approvedPlayers) {
-          pMap[player.id] = player.name;
+        if (playersRes) {
+          const pMap: PlayerMap = {};
+          for (const player of approvedPlayers) {
+            pMap[player.id] = player.name;
+          }
+          setPlayerMap(pMap);
+          setCountPlayers(approvedPlayers.length);
         }
-        setPlayerMap(pMap);
 
-        const tMap: TournamentMap = {};
-        for (const tournament of tournaments) {
-          tMap[tournament.id] = tournament.name;
+        if (tournamentsRes) {
+          const tMap: TournamentMap = {};
+          for (const tournament of tournaments) {
+            tMap[tournament.id] = tournament.name;
+          }
+          setTournamentMap(tMap);
+          setCountTournaments(tournaments.length);
         }
-        setTournamentMap(tMap);
 
-        setCountPendingMatches(pendingCount || 0);
-        setCountPlayers(approvedPlayers.length);
-        setCountTournaments(tournaments.length);
+        if (pendingRes) {
+          const pendingRows = (pendingRes.data || []) as UpcomingMatch[];
+          setCountPendingMatches(pendingRes.count || 0);
+          setUpcomingMatches(pendingRows.map((m) => normalizePlayersFromIds(m)));
+        }
 
-        setUpcomingMatches((pendingMatches || []).map((m: any) => normalizePlayersFromIds(m)));
-        setRecentResults((finishedMatches || []).map((m: any) => normalizePlayersFromIds(m)));
-        setRecentLogs(logs || []);
-        setOverdueMatchesCount(overdueCount || 0);
+        if (finishedRes) {
+          const finishedRows = (finishedRes.data || []) as FinishedMatch[];
+          setRecentResults(finishedRows.map((m) => normalizePlayersFromIds(m)));
+        }
 
-        const days: { key: string; label: string }[] = [];
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(start7d);
-          d.setDate(start7d.getDate() + i);
-          days.push({
-            key: d.toISOString().slice(0, 10),
-            label: d.toLocaleDateString("es-ES", { weekday: "short" }),
+        if (logsRes) {
+          setRecentLogs((logsRes.data || []) as AuditLog[]);
+        }
+
+        if (overdueRes) {
+          setOverdueMatchesCount(overdueRes.count || 0);
+        }
+
+        if (matches7dRes) {
+          const days: { key: string; label: string }[] = [];
+          for (let i = 0; i < 7; i++) {
+            const d = new Date(start7d);
+            d.setDate(start7d.getDate() + i);
+            days.push({
+              key: d.toISOString().slice(0, 10),
+              label: d.toLocaleDateString("es-ES", { weekday: "short" }),
+            });
+          }
+
+          const byDay: Record<string, { key: string; label: string; pending: number; finished: number; total: number }> = {};
+          for (const d of days) {
+            byDay[d.key] = { key: d.key, label: d.label, pending: 0, finished: 0, total: 0 };
+          }
+
+          for (const row of (matches7dRes.data || []) as { start_time: string | null; winner: string | null }[]) {
+            if (!row.start_time) continue;
+            const key = new Date(row.start_time).toISOString().slice(0, 10);
+            if (!byDay[key]) continue;
+            const isPending = !row.winner || String(row.winner).toLowerCase() === "pending";
+            if (isPending) byDay[key].pending += 1;
+            else byDay[key].finished += 1;
+            byDay[key].total += 1;
+          }
+
+          setChart7d(days.map((d) => byDay[d.key]));
+        }
+
+        if (matchesLiteRes && playersRes && tournamentsRes) {
+          calculateAlerts({
+            overdueCount: overdueRes?.count || 0,
+            tournaments,
+            players: approvedPlayers,
+            matchesLite: (matchesLiteRes.data || []) as Array<{
+              tournament_id: number | null;
+              player_1_a: number | null;
+              player_2_a: number | null;
+              player_1_b: number | null;
+              player_2_b: number | null;
+              player_1_a_id?: number | null;
+              player_2_a_id?: number | null;
+              player_1_b_id?: number | null;
+              player_2_b_id?: number | null;
+            }>,
           });
         }
-
-        const byDay: Record<string, { key: string; label: string; pending: number; finished: number; total: number }> = {};
-        for (const d of days) {
-          byDay[d.key] = { key: d.key, label: d.label, pending: 0, finished: 0, total: 0 };
-        }
-
-        for (const row of (matches7d || []) as { start_time: string | null; winner: string | null }[]) {
-          if (!row.start_time) continue;
-          const key = new Date(row.start_time).toISOString().slice(0, 10);
-          if (!byDay[key]) continue;
-          const isPending = !row.winner || String(row.winner).toLowerCase() === "pending";
-          if (isPending) byDay[key].pending += 1;
-          else byDay[key].finished += 1;
-          byDay[key].total += 1;
-        }
-
-        setChart7d(days.map((d) => byDay[d.key]));
-
-        calculateAlerts({
-          overdueCount: overdueCount || 0,
-          tournaments,
-          players: approvedPlayers,
-          matchesLite: (matchesLite || []) as Array<{
-            tournament_id: number | null;
-            player_1_a: number | null;
-            player_2_a: number | null;
-            player_1_b: number | null;
-            player_2_b: number | null;
-            player_1_a_id?: number | null;
-            player_2_a_id?: number | null;
-            player_1_b_id?: number | null;
-            player_2_b_id?: number | null;
-          }>,
-        });
 
         await loadPendingApprovalUsers();
 
         if (isUser) {
-          const {
-            data: { user },
-            error: authError,
-          } = await supabase.auth.getUser();
-          if (authError) {
-            console.error("[dashboard] auth user error:", authError);
-          }
-
-          if (user?.id) {
+          if (session.user.id) {
             const { data: linkedPlayer, error: linkedPlayerErr } = await supabase
               .from("players")
               .select("id, name")
-              .eq("user_id", user.id)
+              .eq("user_id", session.user.id)
               .maybeSingle();
 
             if (linkedPlayerErr) {
@@ -502,7 +568,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [calculateAlerts, loadPendingApprovalUsers, roleLoading, isUser]);
+  }, [calculateAlerts, loadPendingApprovalUsers, roleLoading, isUser, refreshNonce]);
 
   useEffect(() => {
     let active = true;

@@ -135,7 +135,7 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
 
   // MENÚ ADMINISTRACIÓN (solo Admin/Manager)
   const adminMenuItems = [
-    { id: "management", label: t("nav.userManagement"), href: "/admin/management", emoji: "⚙️" },
+    { id: "management", label: t("nav.userManagement"), href: "/admin/users", emoji: "⚙️" },
     { id: "courts", label: t("nav.courtAdmin"), href: "/courts", emoji: "🏟️" },
     { id: "news-admin", label: t("nav.newsAdmin"), href: "/admin/news", emoji: "📝" },
     { id: "analytics", label: t("nav.analytics"), href: "/admin/analytics", emoji: "📈", requiredFeature: "has_player_stats" },

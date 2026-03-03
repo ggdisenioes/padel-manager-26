@@ -1438,7 +1438,7 @@ export default function DashboardPage() {
 
                   {isAdmin && (
                     <Link
-                      href="/admin/management"
+                      href="/admin/users?tab=create"
                       className="inline-flex items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 transition"
                     >
                       <span>👤 {t("dashboard.newPlayer")}</span>

@@ -72,9 +72,22 @@ export default function CreateTournament() {
       start_date: startDate ? startDate : null,
     };
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      toast.error("Sesión no válida. Volvé a iniciar sesión.");
+      setLoading(false);
+      return;
+    }
+
     const response = await fetch("/api/tournaments/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: JSON.stringify(payload),
     });
     const result = await response.json().catch(() => null);

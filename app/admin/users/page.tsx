@@ -37,7 +37,16 @@ type AuditLog = {
 };
 
 type StatusTabKey = "pending" | "approved" | "rejected" | "deleted" | "all";
-type MainTabKey = "manage" | "create" | "logs";
+type MainTabKey = "manage" | "create" | "invites" | "logs";
+
+type PendingInvitationRow = {
+  user_id: string | null;
+  name: string;
+  email: string;
+  role: string;
+  invited_at: string;
+  last_sign_in_at: string | null;
+};
 
 function displayName(u: ProfileRow) {
   const full = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
@@ -63,6 +72,8 @@ export default function AdminUsersPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [statusTab, setStatusTab] = useState<StatusTabKey>("pending");
   const [mainTab, setMainTab] = useState<MainTabKey>("manage");
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationRow[]>([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
 
   const [inviteForm, setInviteForm] = useState({
     name: "",
@@ -261,6 +272,49 @@ export default function AdminUsersPage() {
     }
   };
 
+  const loadPendingInvitations = async () => {
+    if (!canAccess) return;
+
+    setLoadingInvitations(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) {
+        throw new Error("Sesión inválida.");
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch("/api/admin/invitations/pending", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "Error cargando invitaciones.");
+      }
+
+      setPendingInvitations(
+        Array.isArray(payload.invitations) ? (payload.invitations as PendingInvitationRow[]) : []
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        toast.error("La carga de invitaciones tardó demasiado. Reintentá.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Error cargando invitaciones.");
+      }
+    } finally {
+      setLoadingInvitations(false);
+    }
+  };
+
   const approve = async (userId: string) => {
     const { error } = await supabase.rpc("approve_user", { p_user_id: userId });
     if (error) {
@@ -374,6 +428,10 @@ export default function AdminUsersPage() {
       setMainTab("create");
       return;
     }
+    if (tabParam === "invites") {
+      setMainTab("invites");
+      return;
+    }
     if (tabParam === "logs" && canAdminActions) {
       setMainTab("logs");
       return;
@@ -382,6 +440,13 @@ export default function AdminUsersPage() {
       setMainTab("manage");
     }
   }, [searchParams, canAdminActions]);
+
+  useEffect(() => {
+    if (mainTab === "invites" && canAccess) {
+      void loadPendingInvitations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab, canAccess]);
 
   if (loading) {
     return <p className="p-6 text-gray-500">Cargando…</p>;
@@ -433,6 +498,16 @@ export default function AdminUsersPage() {
             }`}
           >
             ➕ Crear Usuario
+          </button>
+          <button
+            onClick={() => setMainTab("invites")}
+            className={`whitespace-nowrap px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold border-b-2 transition ${
+              mainTab === "invites"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-gray-600 hover:text-gray-800"
+            }`}
+          >
+            📨 Invitaciones enviadas
           </button>
           {canAdminActions && (
             <button
@@ -513,6 +588,72 @@ export default function AdminUsersPage() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Solo admins pueden crear usuarios.
             </div>
+          )}
+        </div>
+      )}
+
+      {mainTab === "invites" && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 py-4 sm:px-6 border-b border-gray-100 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold">Invitaciones enviadas</h2>
+              <p className="text-sm text-gray-600">
+                Usuarios invitados que todavía no ingresaron a la plataforma.
+              </p>
+            </div>
+            <button
+              onClick={() => void loadPendingInvitations()}
+              disabled={loadingInvitations}
+              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 disabled:opacity-60 transition"
+            >
+              {loadingInvitations ? "Actualizando..." : "Actualizar"}
+            </button>
+          </div>
+
+          {loadingInvitations ? (
+            <div className="p-6 text-gray-500">Cargando invitaciones...</div>
+          ) : pendingInvitations.length === 0 ? (
+            <div className="p-6 text-gray-500">No hay invitaciones pendientes.</div>
+          ) : (
+            <>
+              <div className="hidden md:grid grid-cols-12 px-4 py-3 text-xs font-bold text-gray-500 uppercase bg-gray-50 border-b border-gray-100">
+                <div className="col-span-3">Nombre</div>
+                <div className="col-span-4">Email</div>
+                <div className="col-span-1">Rol</div>
+                <div className="col-span-2">Invitación</div>
+                <div className="col-span-2">Estado</div>
+              </div>
+
+              {pendingInvitations.map((inv) => (
+                <div
+                  key={`${inv.user_id || inv.email}-${inv.invited_at}`}
+                  className="grid grid-cols-1 md:grid-cols-12 px-4 py-4 border-b border-gray-100 gap-3 md:items-center"
+                >
+                  <div className="md:col-span-3">
+                    <p className="text-sm font-semibold text-gray-900">{inv.name || "Sin nombre"}</p>
+                    <p className="text-xs text-gray-500 break-all">{inv.user_id || "Sin user_id"}</p>
+                  </div>
+
+                  <div className="md:col-span-4 text-sm text-gray-700 break-all">{inv.email}</div>
+
+                  <div className="md:col-span-1">
+                    <span className="text-xs font-semibold px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 uppercase">
+                      {inv.role === "manager" ? "Manager" : "Usuario"}
+                    </span>
+                  </div>
+
+                  <div className="md:col-span-2 text-sm text-gray-700">
+                    {new Date(inv.invited_at).toLocaleString()}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800">
+                      Pendiente de activación
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}

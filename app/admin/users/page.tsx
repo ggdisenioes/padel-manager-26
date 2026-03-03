@@ -236,7 +236,7 @@ export default function AdminUsersPage() {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch("/api/admin/send-invitation", {
         method: "POST",
@@ -286,7 +286,7 @@ export default function AdminUsersPage() {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch("/api/admin/invitations/pending", {
         method: "GET",

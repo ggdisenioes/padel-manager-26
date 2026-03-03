@@ -8,7 +8,7 @@ import { sendUserInvitationEmail } from "@/lib/email";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const INVITE_NETWORK_TIMEOUT_MS = Number(process.env.INVITE_NETWORK_TIMEOUT_MS || "12000");
+const INVITE_NETWORK_TIMEOUT_MS = Number(process.env.INVITE_NETWORK_TIMEOUT_MS || "25000");
 
 const inviteSchema = z.object({
   first_name: z.string().trim().min(1, "Nombre requerido.").max(100),
@@ -244,21 +244,25 @@ export async function POST(req: Request) {
 
     const origin = getOrigin(req);
     const redirectTo = `${origin}/reset-password`;
+    const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false },
+    });
 
-    const { data: linkData, error: linkError } = await withTimeout(
+    let actionLink: string | null = null;
+    const linkResult = await withTimeout(
       supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email,
         options: { redirectTo },
       }),
       "generate-link"
-    );
+    ).catch((linkErr) => {
+      console.error("[send-invitation] generate-link error", linkErr);
+      return null;
+    });
 
-    if (linkError || !linkData?.properties?.action_link) {
-      return NextResponse.json(
-        { error: "No se pudo generar el enlace de invitación." },
-        { status: 500 }
-      );
+    if (linkResult && !linkResult.error && linkResult.data?.properties?.action_link) {
+      actionLink = linkResult.data.properties.action_link;
     }
 
     const { data: tenantData } = await supabaseAdmin
@@ -273,27 +277,27 @@ export async function POST(req: Request) {
       host.includes("twinco.padelx.es") || tenantName.toLowerCase() === "twinco";
     const clubName = isTwincoTenant ? "Twinco Padel Manager" : tenantName || "PadelX";
 
-    const sent = await withTimeout(
-      sendUserInvitationEmail({
-        to: email,
-        inviteUrl: linkData.properties.action_link,
-        clubName,
-        fromName: clubName,
-        invitedName: first_name,
-        invitedRole: role,
-      }),
-      "send-invitation-email"
-    ).catch((mailErr) => {
-      console.error("[send-invitation] invitation email error", mailErr);
-      return false;
-    });
+    let sent = false;
+    if (actionLink) {
+      sent = await withTimeout(
+        sendUserInvitationEmail({
+          to: email,
+          inviteUrl: actionLink,
+          clubName,
+          fromName: clubName,
+          invitedName: first_name,
+          invitedRole: role,
+        }),
+        "send-invitation-email"
+      ).catch((mailErr) => {
+        console.error("[send-invitation] invitation email error", mailErr);
+        return false;
+      });
+    }
 
     let delivered = sent;
     if (!delivered) {
       // Fallback to Supabase default recovery template to avoid blocking.
-      const supabasePublic = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false },
-      });
       const fallback = await withTimeout(
         supabasePublic.auth.resetPasswordForEmail(email, { redirectTo }),
         "fallback-reset-email"
@@ -331,6 +335,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       invited: true,
+      email_template: sent ? "custom_invitation" : "supabase_default",
       email,
       role,
       user_id: invitedUserId,

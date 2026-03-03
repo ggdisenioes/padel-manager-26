@@ -5,6 +5,7 @@ import { getClientIp, rateLimit } from "@/lib/rate-limit";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const AUTH_LOOKUP_TIMEOUT_MS = Number(process.env.AUTH_LOOKUP_TIMEOUT_MS || "7000");
 
 type RequesterProfile = {
   role: string | null;
@@ -55,31 +56,50 @@ async function getAuthSignInMap(
   admin: ReturnType<typeof createClient>,
   userIds: string[]
 ): Promise<Map<string, string | null>> {
-  const idSet = new Set(userIds);
+  const uniqueIds = Array.from(new Set(userIds)).filter(Boolean);
   const out = new Map<string, string | null>();
-  if (idSet.size === 0) return out;
+  if (uniqueIds.length === 0) return out;
 
-  let page = 1;
-  let safety = 0;
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueIds.length; i += 15) {
+    chunks.push(uniqueIds.slice(i, i + 15));
+  }
 
-  while (safety < 50) {
-    safety += 1;
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) {
-      throw error;
+  const withTimeout = async <T,>(promise: Promise<T>, label: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${label} timeout`)), AUTH_LOOKUP_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
+  };
 
-    const users = data?.users || [];
-    for (const user of users) {
-      if (idSet.has(user.id)) {
-        out.set(user.id, user.last_sign_in_at || null);
+  for (const chunk of chunks) {
+    const results = await Promise.allSettled(
+      chunk.map(async (userId) => {
+        const { data, error } = await withTimeout(
+          admin.auth.admin.getUserById(userId),
+          `getUserById:${userId}`
+        );
+        if (error || !data?.user) {
+          return { userId, lastSignInAt: null };
+        }
+        return { userId, lastSignInAt: data.user.last_sign_in_at || null };
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        out.set(result.value.userId, result.value.lastSignInAt);
+      } else {
+        console.warn("[pending-invitations] getUserById failed", result.reason);
       }
     }
-
-    if (!data?.nextPage || out.size >= idSet.size) {
-      break;
-    }
-    page = data.nextPage;
   }
 
   return out;
@@ -252,6 +272,10 @@ export async function GET(req: Request) {
         last_sign_in_at: lastSignIn,
       });
     }
+
+    pending.sort((a, b) => {
+      return new Date(b.invited_at).getTime() - new Date(a.invited_at).getTime();
+    });
 
     return NextResponse.json({
       ok: true,

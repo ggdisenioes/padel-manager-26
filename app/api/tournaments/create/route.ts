@@ -33,7 +33,11 @@ export async function POST(request: NextRequest) {
       {
         cookies: {
           get(name: string) {
-            return cookieStore.get(name)?.value;
+            const cookie = cookieStore.get(name);
+            return cookie ? cookie.value : undefined;
+          },
+          getAll() {
+            return cookieStore.getAll().map(({ name, value }) => ({ name, value }));
           },
           set(name: string, value: string, options: any) {
             cookieStore.set(name, value, options);

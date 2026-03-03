@@ -330,6 +330,40 @@ export async function sendPasswordResetEmail(opts: {
   });
 }
 
+export async function sendUserInvitationEmail(opts: {
+  to: string;
+  inviteUrl: string;
+  clubName?: string | null;
+  invitedRole?: "user" | "manager" | string;
+}) {
+  const { to, inviteUrl, clubName, invitedRole } = opts;
+  const safeClub = esc(clubName || "PadelX");
+  const safeUrl = esc(inviteUrl);
+  const roleLabel =
+    invitedRole === "manager"
+      ? "Manager"
+      : invitedRole === "user"
+      ? "Usuario"
+      : "Usuario";
+
+  const subject = `Invitación a ${safeClub}`;
+
+  const body = baseLayout(
+    subject,
+    `<h2>¡Bienvenido/a a ${safeClub}!</h2>
+    <p>Recibiste una invitación para unirte a la plataforma como <strong>${roleLabel}</strong>.</p>
+    <p>Para activar tu cuenta, definí tu contraseña desde este botón:</p>
+    <a class="btn" href="${safeUrl}">Crear contraseña y acceder</a>
+    <p style="margin-top:14px;">Si no esperabas este correo, podés ignorarlo.</p>
+    <p class="muted">Este enlace es personal y seguro.</p>`
+  );
+
+  return sendEmail(to, subject, body, {
+    fromName: clubName || "PadelX",
+    tags: [{ name: "template", value: "user_invitation" }],
+  });
+}
+
 function renderMatchCta(url: string | null, label: string) {
   if (!url) {
     return `<p class="muted">Este correo es informativo. Ingresá desde el enlace habitual de tu club para ver el detalle.</p>`;

@@ -3,10 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
-import { z } from "zod";
 import { supabase } from "../../lib/supabase";
-import { createUserSchema } from "../../lib/validation";
-import { getPasswordRuleStatuses } from "../../lib/password-policy";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -67,17 +64,11 @@ export default function AdminUsersPage() {
   const [statusTab, setStatusTab] = useState<StatusTabKey>("pending");
   const [mainTab, setMainTab] = useState<MainTabKey>("manage");
 
-  const [createForm, setCreateForm] = useState({
+  const [inviteForm, setInviteForm] = useState({
     email: "",
-    password: "",
     role: "user" as "user" | "manager",
   });
-  const [creatingUser, setCreatingUser] = useState(false);
-
-  const createPasswordRuleStatuses = useMemo(
-    () => getPasswordRuleStatuses(createForm.password),
-    [createForm.password]
-  );
+  const [sendingInvitation, setSendingInvitation] = useState(false);
 
   const filtered = useMemo(() => {
     if (statusTab === "all") return rows;
@@ -207,7 +198,7 @@ export default function AdminUsersPage() {
     setLoading(false);
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!canAdminActions) {
@@ -215,14 +206,8 @@ export default function AdminUsersPage() {
       return;
     }
 
-    setCreatingUser(true);
+    setSendingInvitation(true);
     try {
-      const validated = createUserSchema.parse({
-        email: createForm.email,
-        password: createForm.password,
-        role: createForm.role,
-      });
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -232,32 +217,31 @@ export default function AdminUsersPage() {
         throw new Error("Sesión inválida.");
       }
 
-      const response = await fetch("/api/admin/create-user", {
+      const response = await fetch("/api/admin/send-invitation", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(validated),
+        body: JSON.stringify({
+          email: inviteForm.email.trim().toLowerCase(),
+          role: inviteForm.role,
+        }),
       });
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.error || "Error creando usuario");
+        throw new Error(payload.error || "Error enviando invitación");
       }
 
-      toast.success("Usuario creado.");
-      setCreateForm({ email: "", password: "", role: "user" });
+      toast.success("Invitación enviada.");
+      setInviteForm({ email: "", role: "user" });
       setMainTab("manage");
       void load();
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast.error(error.errors[0]?.message || "Datos inválidos.");
-      } else {
-        toast.error(error instanceof Error ? error.message : "Error creando usuario.");
-      }
+      toast.error(error instanceof Error ? error.message : "Error enviando invitación.");
     } finally {
-      setCreatingUser(false);
+      setSendingInvitation(false);
     }
   };
 
@@ -453,15 +437,18 @@ export default function AdminUsersPage() {
         <div className="max-w-2xl bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
           {canAdminActions ? (
             <>
-              <h2 className="text-lg sm:text-xl font-bold mb-4">Crear nuevo usuario</h2>
-              <form onSubmit={handleCreateUser} className="space-y-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-2">Invitar nuevo usuario</h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Enviá una invitación por email para que el usuario cree su contraseña y acceda.
+              </p>
+              <form onSubmit={handleSendInvitation} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Email</label>
                   <input
                     type="email"
-                    value={createForm.email}
+                    value={inviteForm.email}
                     onChange={(e) =>
-                      setCreateForm((prev) => ({ ...prev, email: e.target.value }))
+                      setInviteForm((prev) => ({ ...prev, email: e.target.value }))
                     }
                     className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="usuario@padel.com"
@@ -469,34 +456,11 @@ export default function AdminUsersPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Contraseña</label>
-                  <input
-                    type="password"
-                    value={createForm.password}
-                    onChange={(e) =>
-                      setCreateForm((prev) => ({ ...prev, password: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Mín. 8 caracteres, mayúscula, número y símbolo"
-                    required
-                  />
-                  <ul className="mt-2 space-y-1">
-                    {createPasswordRuleStatuses.map((rule) => (
-                      <li
-                        key={rule.key}
-                        className={`text-xs ${rule.ok ? "text-green-700" : "text-gray-500"}`}
-                      >
-                        {rule.ok ? "[OK]" : "[ ]"} {rule.label}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1">Rol</label>
                   <select
-                    value={createForm.role}
+                    value={inviteForm.role}
                     onChange={(e) =>
-                      setCreateForm((prev) => ({
+                      setInviteForm((prev) => ({
                         ...prev,
                         role: e.target.value as "user" | "manager",
                       }))
@@ -509,10 +473,10 @@ export default function AdminUsersPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={creatingUser}
+                  disabled={sendingInvitation}
                   className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition"
                 >
-                  {creatingUser ? "Creando..." : "Crear Usuario"}
+                  {sendingInvitation ? "Enviando..." : "Enviar invitación"}
                 </button>
               </form>
             </>

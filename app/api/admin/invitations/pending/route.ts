@@ -6,6 +6,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const AUTH_LOOKUP_TIMEOUT_MS = Number(process.env.AUTH_LOOKUP_TIMEOUT_MS || "7000");
+const INVITATION_FALLBACK_WINDOW_DAYS = Number(
+  process.env.INVITATION_FALLBACK_WINDOW_DAYS || "45"
+);
 
 type RequesterProfile = {
   role: string | null;
@@ -27,6 +30,7 @@ type ProfileRow = {
   role: string | null;
   active: boolean | null;
   deleted_at: string | null;
+  created_at: string | null;
 };
 
 type PendingInvitation = {
@@ -224,31 +228,48 @@ export async function GET(req: Request) {
     }
 
     const dedupedInvites = Array.from(latestByKey.values());
-    const userIds = dedupedInvites
-      .map((inv) => inv.user_id)
-      .filter((id): id is string => Boolean(id));
 
-    let profileById = new Map<string, ProfileRow>();
-    if (userIds.length > 0) {
-      const { data: profileRows, error: profileErr } = await supabaseAdmin
-        .from("profiles")
-        .select("id, email, first_name, last_name, role, active, deleted_at")
-        .eq("tenant_id", requesterProfile.tenant_id)
-        .in("id", userIds);
+    const fallbackSince = new Date();
+    fallbackSince.setDate(fallbackSince.getDate() - INVITATION_FALLBACK_WINDOW_DAYS);
 
-      if (profileErr) {
-        return NextResponse.json(
-          { error: "No se pudieron validar los perfiles invitados." },
-          { status: 500 }
-        );
-      }
+    const { data: tenantProfiles, error: tenantProfilesErr } = await supabaseAdmin
+      .from("profiles")
+      .select("id, email, first_name, last_name, role, active, deleted_at, created_at")
+      .eq("tenant_id", requesterProfile.tenant_id)
+      .in("role", ["user", "manager"])
+      .is("deleted_at", null)
+      .eq("active", true)
+      .gte("created_at", fallbackSince.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1000);
 
-      profileById = new Map(((profileRows || []) as ProfileRow[]).map((p) => [p.id, p]));
+    if (tenantProfilesErr) {
+      return NextResponse.json(
+        { error: "No se pudieron cargar perfiles del tenant." },
+        { status: 500 }
+      );
     }
 
-    const signInById = await getAuthSignInMap(supabaseAdmin, userIds);
+    const profileRows = (tenantProfiles || []) as ProfileRow[];
+    const profileById = new Map(profileRows.map((p) => [p.id, p]));
 
-    const pending: PendingInvitation[] = [];
+    const userIdSet = new Set<string>();
+    for (const inv of dedupedInvites) {
+      if (inv.user_id) userIdSet.add(inv.user_id);
+    }
+    for (const p of profileRows) {
+      userIdSet.add(p.id);
+    }
+
+    const signInById = await getAuthSignInMap(supabaseAdmin, Array.from(userIdSet));
+
+    const pendingMap = new Map<string, PendingInvitation>();
+    const upsertPending = (row: PendingInvitation) => {
+      const key = row.user_id ? `id:${row.user_id}` : `email:${row.email.toLowerCase()}`;
+      if (pendingMap.has(key)) return;
+      pendingMap.set(key, row);
+    };
+
     for (const invite of dedupedInvites) {
       const profile = invite.user_id ? profileById.get(invite.user_id) || null : null;
       if (profile && (profile.deleted_at || profile.active === false)) continue;
@@ -263,7 +284,7 @@ export async function GET(req: Request) {
       const email = asString(profile?.email) || invite.invited_email;
       if (!email) continue;
 
-      pending.push({
+      upsertPending({
         user_id: invite.user_id,
         name: fullName || invite.invited_name || "Sin nombre",
         email,
@@ -272,6 +293,29 @@ export async function GET(req: Request) {
         last_sign_in_at: lastSignIn,
       });
     }
+
+    for (const profile of profileRows) {
+      const lastSignIn = signInById.get(profile.id) || null;
+      if (lastSignIn) continue;
+
+      const email = asString(profile.email);
+      if (!email) continue;
+
+      const firstName = asString(profile.first_name);
+      const lastName = asString(profile.last_name);
+      const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+      upsertPending({
+        user_id: profile.id,
+        name: fullName || "Sin nombre",
+        email,
+        role: normalizeRole(profile.role),
+        invited_at: profile.created_at || new Date().toISOString(),
+        last_sign_in_at: null,
+      });
+    }
+
+    const pending = Array.from(pendingMap.values());
 
     pending.sort((a, b) => {
       return new Date(b.invited_at).getTime() - new Date(a.invited_at).getTime();

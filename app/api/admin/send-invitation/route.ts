@@ -29,6 +29,11 @@ type ExistingProfile = {
   role: string | null;
 };
 
+type AuthUserLite = {
+  id: string;
+  email?: string | null;
+};
+
 function getHost(req: Request): string {
   const forwardedHost = req.headers.get("x-forwarded-host");
   const host = forwardedHost || req.headers.get("host") || "";
@@ -73,6 +78,37 @@ async function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function findAuthUserByEmail(
+  admin: ReturnType<typeof createClient>,
+  email: string
+): Promise<AuthUserLite | null> {
+  const target = email.trim().toLowerCase();
+  let page = 1;
+  let safety = 0;
+
+  while (safety < 50) {
+    safety += 1;
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) {
+      throw error;
+    }
+
+    const found =
+      (data?.users || []).find((u) => String(u.email || "").trim().toLowerCase() === target) ||
+      null;
+    if (found) {
+      return { id: found.id, email: found.email || null };
+    }
+
+    if (!data?.nextPage) {
+      break;
+    }
+    page = data.nextPage;
+  }
+
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -158,7 +194,7 @@ export async function POST(req: Request) {
     const { data: profileRows, error: profileRowsErr } = await supabaseAdmin
       .from("profiles")
       .select("id, tenant_id, role")
-      .eq("email", email);
+      .ilike("email", email);
 
     if (profileRowsErr) {
       return NextResponse.json(
@@ -209,16 +245,31 @@ export async function POST(req: Request) {
 
       if (createResult.error || !createResult.data.user) {
         const msg = createResult.error?.message || "No se pudo crear el usuario";
-        if (msg.toLowerCase().includes("already")) {
-          return NextResponse.json(
-            { error: "El email ya está registrado. Contactá soporte para reasignarlo." },
-            { status: 409 }
-          );
-        }
-        return NextResponse.json({ error: msg }, { status: 500 });
-      }
+        const alreadyExists =
+          msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered");
+        if (alreadyExists) {
+          const existingAuthUser = await withTimeout(
+            findAuthUserByEmail(supabaseAdmin, email),
+            "find-auth-user-by-email"
+          ).catch((findErr) => {
+            console.error("[send-invitation] find auth user error", findErr);
+            return null;
+          });
 
-      invitedUserId = createResult.data.user.id;
+          if (existingAuthUser?.id) {
+            invitedUserId = existingAuthUser.id;
+          } else {
+            return NextResponse.json(
+              { error: "El email ya está registrado. No se pudo recuperar el usuario." },
+              { status: 409 }
+            );
+          }
+        } else {
+          return NextResponse.json({ error: msg }, { status: 500 });
+        }
+      } else {
+        invitedUserId = createResult.data.user.id;
+      }
     }
 
     const profilePayload: Record<string, unknown> = {
@@ -295,6 +346,8 @@ export async function POST(req: Request) {
       });
     }
 
+    let deliveryStatus: "custom_invitation" | "supabase_default" | "failed" =
+      sent ? "custom_invitation" : "failed";
     let delivered = sent;
     if (!delivered) {
       // Fallback to Supabase default recovery template to avoid blocking.
@@ -307,6 +360,33 @@ export async function POST(req: Request) {
       });
 
       delivered = Boolean(fallback && !fallback.error);
+      if (delivered) {
+        deliveryStatus = "supabase_default";
+      }
+    }
+
+    if (!delivered) {
+      deliveryStatus = "failed";
+    }
+
+    const requesterEmail = user.email || null;
+
+    try {
+      await supabaseAdmin.from("action_logs").insert({
+        action: "ADMIN_SEND_INVITATION",
+        entity: "auth",
+        entity_id: invitedUserId,
+        user_email: requesterEmail,
+        tenant_id: requesterProfile.tenant_id,
+        metadata: {
+          invited_email: email,
+          invited_role: role,
+          invited_name: first_name,
+          delivery_status: deliveryStatus,
+        },
+      });
+    } catch (logErr) {
+      console.warn("[send-invitation] non-blocking log insert error", logErr);
     }
 
     if (!delivered) {
@@ -316,26 +396,10 @@ export async function POST(req: Request) {
       );
     }
 
-    try {
-      await supabaseAdmin.from("action_logs").insert({
-        action: "ADMIN_SEND_INVITATION",
-        entity: "auth",
-        entity_id: invitedUserId,
-        tenant_id: requesterProfile.tenant_id,
-        metadata: {
-          invited_email: email,
-          invited_role: role,
-          invited_name: first_name,
-        },
-      });
-    } catch (logErr) {
-      console.warn("[send-invitation] non-blocking log insert error", logErr);
-    }
-
     return NextResponse.json({
       ok: true,
       invited: true,
-      email_template: sent ? "custom_invitation" : "supabase_default",
+      email_template: deliveryStatus,
       email,
       role,
       user_id: invitedUserId,

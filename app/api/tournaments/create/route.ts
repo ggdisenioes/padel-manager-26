@@ -1,9 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
 
 type CreateTournamentBody = {
   name?: string;
@@ -25,40 +23,24 @@ const ALLOWED_STATUSES = new Set([
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-
-    const authClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            const cookie = cookieStore.get(name);
-            return cookie ? cookie.value : undefined;
-          },
-          getAll() {
-            return cookieStore.getAll().map(({ name, value }) => ({ name, value }));
-          },
-          set(name: string, value: string, options: any) {
-            cookieStore.set(name, value, options);
-          },
-          remove(name: string, options: any) {
-            cookieStore.set(name, "", { ...options, maxAge: 0 });
-          },
-        },
-      }
-    );
-
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser();
+    const authHeader = request.headers.get("authorization") || "";
+    const token = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7)
+      : null;
 
+    if (!token) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    const { data: userData, error: userError } = await adminClient.auth.getUser(
+      token
+    );
+    const user = userData?.user;
     if (userError || !user) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }

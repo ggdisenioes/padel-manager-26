@@ -379,6 +379,52 @@ export async function sendUserInvitationEmail(opts: {
   });
 }
 
+export async function sendAdminPendingRegistrationEmail(opts: {
+  to: string;
+  adminName?: string | null;
+  clubName?: string | null;
+  registrantName?: string | null;
+  registrantEmail: string;
+  manageUrl?: string | null;
+}) {
+  const {
+    to,
+    adminName,
+    clubName,
+    registrantName,
+    registrantEmail,
+    manageUrl,
+  } = opts;
+
+  const safeClub = esc(clubName || "PadelX");
+  const safeAdminName = esc(adminName || "Admin");
+  const safeRegistrantName = esc(registrantName || "Sin nombre");
+  const safeRegistrantEmail = esc(registrantEmail);
+  const safeManageUrl = esc(manageUrl || "");
+  const subject = `Nuevo registro pendiente de aprobación · ${safeClub}`;
+  const cta = manageUrl
+    ? `<a class="btn" href="${safeManageUrl}">Revisar y aprobar/rechazar</a>`
+    : `<p class="muted">Ingresá al panel de gestión de usuarios para aprobar o rechazar la solicitud.</p>`;
+
+  const body = baseLayout(
+    subject,
+    `<h2>Nuevo usuario pendiente de aprobación</h2>
+    <p>Hola <strong>${safeAdminName}</strong>, se registró un nuevo usuario en <strong>${safeClub}</strong>.</p>
+    <table class="info-table">
+      <tr><td>Nombre</td><td>${safeRegistrantName}</td></tr>
+      <tr><td>Email</td><td>${safeRegistrantEmail}</td></tr>
+      <tr><td>Estado</td><td>Pendiente de aprobación</td></tr>
+    </table>
+    <p>Podés aprobar o rechazar esta solicitud desde la sección de gestión de usuarios.</p>
+    ${cta}`
+  );
+
+  return sendEmail(to, subject, body, {
+    fromName: clubName || "PadelX",
+    tags: [{ name: "template", value: "admin_pending_registration" }],
+  });
+}
+
 function renderMatchCta(url: string | null, label: string) {
   if (!url) {
     return `<p class="muted">Este correo es informativo. Ingresá desde el enlace habitual de tu club para ver el detalle.</p>`;

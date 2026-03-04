@@ -76,6 +76,7 @@ export default function AdminUsersPage() {
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitationRow[]>([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
   const [invitationActionKey, setInvitationActionKey] = useState<string | null>(null);
+  const [roleActionUserId, setRoleActionUserId] = useState<string | null>(null);
 
   const [inviteForm, setInviteForm] = useState({
     name: "",
@@ -88,6 +89,13 @@ export default function AdminUsersPage() {
     if (statusTab === "all") return rows;
     return rows.filter((r) => statusFromRow(r) === statusTab);
   }, [rows, statusTab]);
+
+  const activeAdminCount = useMemo(() => {
+    return rows.filter((r) => {
+      const role = (r.role ?? "").toString().toLowerCase();
+      return role === "admin" && r.active !== false && !r.deleted_at;
+    }).length;
+  }, [rows]);
 
   const userPlayerMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -493,15 +501,42 @@ export default function AdminUsersPage() {
     void load();
   };
 
-  const changeRole = async (userId: string, newRole: "user" | "manager") => {
-    const { error } = await supabase.from("profiles").update({ role: newRole }).eq("id", userId);
-    if (error) {
-      console.error(error);
-      toast.error("No se pudo actualizar el rol.");
+  const changeRole = async (userId: string, newRole: "user" | "manager" | "admin") => {
+    if (!canAdminActions) {
+      toast.error("Solo admins pueden cambiar roles.");
       return;
     }
-    toast.success("Rol actualizado.");
-    void load();
+
+    setRoleActionUserId(userId);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("Sesión inválida.");
+
+      const response = await fetch("/api/admin/users/role", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user_id: userId, role: newRole }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || "No se pudo actualizar el rol.");
+      }
+
+      toast.success(payload.unchanged ? "El rol ya estaba aplicado." : "Rol actualizado.");
+      void load();
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el rol.");
+    } finally {
+      setRoleActionUserId(null);
+    }
   };
 
   const linkPlayer = async (userId: string, playerId: number | null) => {
@@ -928,7 +963,18 @@ function pickHigherRole(tokenRole: string | null, dbRole: string | null): string
                 {filtered.map((u) => {
                   const status = statusFromRow(u);
                   const isMe = meId === u.id;
-                  const isTargetAdmin = (u.role ?? "").toString().toLowerCase() === "admin";
+                  const normalizedRole = (u.role ?? "user").toString().toLowerCase();
+                  const roleValue: "admin" | "manager" | "user" =
+                    normalizedRole === "admin" ||
+                    normalizedRole === "manager" ||
+                    normalizedRole === "user"
+                      ? normalizedRole
+                      : "user";
+                  const isProtectedRole = normalizedRole === "super_admin";
+                  const isTargetAdmin = roleValue === "admin";
+                  const isLastActiveAdmin =
+                    isTargetAdmin && u.active !== false && !u.deleted_at && activeAdminCount <= 1;
+                  const isChangingRole = roleActionUserId === u.id;
                   const linkedPlayerId = userPlayerMap[u.id] ?? null;
                   const availablePlayers = players.filter(
                     (p) => p.user_id === null || p.user_id === u.id
@@ -968,20 +1014,31 @@ function pickHigherRole(tokenRole: string | null, dbRole: string | null): string
 
                       <div className="md:col-span-1">
                         <p className="md:hidden text-[11px] font-bold uppercase text-gray-500 mb-1">Rol</p>
-                        {isTargetAdmin ? (
-                          <span className="text-sm text-gray-700">admin</span>
-                        ) : (
+                        {canAdminActions && !isProtectedRole ? (
                           <select
-                            value={(u.role ?? "user").toString().toLowerCase()}
+                            value={roleValue}
                             onChange={(e) => {
                               const v = e.target.value;
-                              if (v === "manager" || v === "user") void changeRole(u.id, v);
+                              if (v === "admin" || v === "manager" || v === "user") {
+                                void changeRole(u.id, v);
+                              }
                             }}
-                            className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm"
+                            disabled={isChangingRole || isLastActiveAdmin}
+                            title={
+                              isLastActiveAdmin
+                                ? "No se puede quitar el rol al último admin activo del tenant."
+                                : ""
+                            }
+                            className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                           >
                             <option value="user">user</option>
                             <option value="manager">manager</option>
+                            <option value="admin">admin</option>
                           </select>
+                        ) : (
+                          <span className="text-sm text-gray-700">
+                            {isProtectedRole ? "super_admin" : roleValue}
+                          </span>
                         )}
                       </div>
 

@@ -58,7 +58,7 @@ export function useRole() {
 
     const loadRole = async () => {
       try {
-        const session = await waitForSession(supabase, { retries: 7, delayMs: 180 });
+        const session = await waitForSession(supabase, { retries: 12, delayMs: 180 });
 
         if (!session?.user?.id) {
           if (active) {
@@ -150,8 +150,10 @@ export function useRole() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (
+        event === "INITIAL_SESSION" ||
         event === "SIGNED_IN" ||
         event === "TOKEN_REFRESHED" ||
+        event === "USER_UPDATED" ||
         event === "SIGNED_OUT"
       ) {
         void loadRole();

@@ -12,10 +12,12 @@ const ALLOWED_ROLES = new Set(["admin", "manager", "user"]);
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
+      return NextResponse.json({ error: "Servidor mal configurado." }, { status: 500 });
+    }
 
     // 1) Auth del requester por bearer token (JWT)
     const authHeader = request.headers.get("authorization") || "";
@@ -24,25 +26,20 @@ export async function POST(request: NextRequest) {
       : null;
     if (!token) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    const { data: requesterUser, error: userErr } = await adminClient.auth.getUser(token);
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: requesterUser, error: userErr } = await userClient.auth.getUser();
     if (userErr || !requesterUser?.user)
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    // 2) Perfil del requester
-    const { data: requesterProfile } = await adminClient
-      .from("profiles")
-      .select("id, role, tenant_id, active")
-      .eq("id", requesterUser.user.id)
-      .maybeSingle();
-
-    if (!requesterProfile?.active || requesterProfile.role !== "admin") {
-      return NextResponse.json({ error: "Solo admins pueden cambiar roles." }, { status: 403 });
-    }
-    if (!requesterProfile.tenant_id) {
-      return NextResponse.json({ error: "Admin sin tenant asignado." }, { status: 400 });
-    }
-
-    // 3) Body
+    // 2) Body
     const body = (await request.json()) as Body;
     const targetId = (body.user_id || "").trim();
     const newRole = (body.role || "").toLowerCase();
@@ -51,67 +48,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Parámetros inválidos." }, { status: 400 });
     }
 
-    // 4) Perfil target (misma tenant)
-    const { data: target, error: targetErr } = await adminClient
-      .from("profiles")
-      .select("id, tenant_id, role, active")
-      .eq("id", targetId)
-      .maybeSingle();
+    // 3) Cambio de rol con función SQL security definer
+    const { data: rpcData, error: rpcErr } = await userClient.rpc("admin_set_user_role", {
+      p_target_user_id: targetId,
+      p_new_role: newRole,
+    });
 
-    if (targetErr || !target) {
-      return NextResponse.json({ error: "Usuario no encontrado." }, { status: 404 });
-    }
-    if (target.tenant_id !== requesterProfile.tenant_id) {
-      return NextResponse.json({ error: "No podés editar usuarios de otro tenant." }, { status: 403 });
-    }
-    const currentRole = String(target.role || "").toLowerCase();
-    if (currentRole === "super_admin") {
-      return NextResponse.json({ error: "No se puede modificar super_admin." }, { status: 403 });
-    }
-    if (currentRole === newRole) {
-      return NextResponse.json({ success: true, user_id: targetId, role: newRole, unchanged: true });
-    }
+    if (rpcErr) {
+      const code = String(rpcErr.code || "");
+      const msg = String(rpcErr.message || "No se pudo actualizar el rol.");
 
-    // Evita que se quede el tenant sin admins activos
-    if (currentRole === "admin" && newRole !== "admin") {
-      const { count, error: countErr } = await adminClient
-        .from("profiles")
-        .select("id", { head: true, count: "exact" })
-        .eq("tenant_id", requesterProfile.tenant_id)
-        .eq("role", "admin")
-        .eq("active", true);
-
-      if (countErr) {
-        return NextResponse.json({ error: countErr.message || "Error validando admins." }, { status: 500 });
+      if (code === "22023") {
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
+      if (code === "P0002") {
+        return NextResponse.json({ error: msg }, { status: 404 });
+      }
+      if (code === "42501") {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+      if (code === "P0001") {
+        return NextResponse.json({ error: msg }, { status: 400 });
       }
 
-      if ((count ?? 0) <= 1) {
-        return NextResponse.json(
-          { error: "No se puede quitar el rol admin al único admin activo del tenant." },
-          { status: 400 }
-        );
-      }
-    }
-
-    // 5) Update perfil
-    const { error: upErr } = await adminClient
-      .from("profiles")
-      .update({ role: newRole, active: true })
-      .eq("id", targetId)
-      .eq("tenant_id", requesterProfile.tenant_id);
-
-    if (upErr) {
-      const msg = upErr.message || "Error actualizando rol";
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 
-    // 6) Opcional: reflejar en app_metadata/user_metadata
+    // 4) Reflejar rol en auth metadata (best-effort)
     await adminClient.auth.admin.updateUserById(targetId, {
       app_metadata: { role: newRole },
       user_metadata: { role: newRole },
     }).catch(() => {});
 
-    return NextResponse.json({ success: true, user_id: targetId, role: newRole });
+    return NextResponse.json(
+      typeof rpcData === "object" && rpcData
+        ? rpcData
+        : { success: true, user_id: targetId, role: newRole }
+    );
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Error interno";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -121,6 +121,9 @@ export default function AdminUsersPage() {
 
     setMeId(user.id);
 
+    const token = session?.access_token;
+    const tokenRole = decodeJwtRole(token);
+
     const { data: me, error: meErr } = await supabase
       .from("profiles")
       .select("id, tenant_id, role, active, approval_status")
@@ -138,7 +141,8 @@ export default function AdminUsersPage() {
       return;
     }
 
-    const role = (me.role ?? "").toString().toLowerCase();
+    const dbRole = (me.role ?? "").toString().toLowerCase();
+    const role = pickHigherRole(tokenRole, dbRole);
     const allowed = role === "admin" || role === "manager";
     const isAdmin = role === "admin";
 
@@ -204,7 +208,14 @@ export default function AdminUsersPage() {
       toast.error("No se pudieron cargar los logs.");
     }
 
-    setRows((usersRes.data as ProfileRow[]) || []);
+    const rows = ((usersRes.data as ProfileRow[]) || []).map((row) => {
+      if (session?.user?.id && row.id === session.user.id) {
+        return { ...row, role: pickHigherRole(tokenRole, row.role) };
+      }
+      return row;
+    });
+
+    setRows(rows);
     setPlayers((playersRes.data as PlayerOption[]) || []);
     setLogs((logsRes.data as AuditLog[]) || []);
     setLoading(false);
@@ -527,6 +538,31 @@ export default function AdminUsersPage() {
   useEffect(() => {
     void load();
   }, []);
+
+function decodeJwtRole(token?: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const data = JSON.parse(json);
+    const role =
+      data?.role ||
+      data?.user_role ||
+      data?.app_metadata?.role ||
+      data?.app_metadata?.user_role;
+    return typeof role === "string" ? role.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function pickHigherRole(tokenRole: string | null, dbRole: string | null): string {
+  const normDb = (dbRole || "").toLowerCase();
+  const normTk = (tokenRole || "").toLowerCase();
+  if (normTk === "admin") return "admin";
+  if (normTk === "manager" && normDb !== "admin") return "manager";
+  return normDb || normTk || "user";
+}
 
   useEffect(() => {
     const {

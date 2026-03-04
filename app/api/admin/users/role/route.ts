@@ -48,8 +48,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Parámetros inválidos." }, { status: 400 });
     }
 
-    // 3) Cambio de rol con función SQL security definer
-    const { data: rpcData, error: rpcErr } = await userClient.rpc("admin_set_user_role", {
+    // 3) Validación de requester (admin activo con tenant)
+    const { data: requesterProfile, error: requesterErr } = await adminClient
+      .from("profiles")
+      .select("id, role, active, tenant_id")
+      .eq("id", requesterUser.user.id)
+      .maybeSingle();
+
+    if (requesterErr || !requesterProfile) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    if (
+      requesterProfile.active !== true ||
+      requesterProfile.role !== "admin" ||
+      !requesterProfile.tenant_id
+    ) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
+    // 4) Cambio de rol con función SQL security definer (service-only)
+    const { data: rpcData, error: rpcErr } = await adminClient.rpc("admin_set_user_role", {
+      p_actor_user_id: requesterUser.user.id,
       p_target_user_id: targetId,
       p_new_role: newRole,
     });
@@ -74,7 +93,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 
-    // 4) Reflejar rol en auth metadata (best-effort)
+    // 5) Reflejar rol en auth metadata (best-effort)
     await adminClient.auth.admin.updateUserById(targetId, {
       app_metadata: { role: newRole },
       user_metadata: { role: newRole },

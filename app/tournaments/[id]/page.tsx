@@ -42,6 +42,7 @@ export default function TournamentDetail() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [tournamentRounds, setTournamentRounds] = useState<TournamentRound[]>([]);
   const [playersMap, setPlayersMap] = useState<PlayerMap>({});
+  const [canManageByProfile, setCanManageByProfile] = useState(false);
   const [openResultMatch, setOpenResultMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
@@ -60,7 +61,18 @@ export default function TournamentDetail() {
 
       try {
         // Esperamos a que la sesión esté restaurada para evitar falsos "no encontrado" por RLS.
-        await waitForSession(supabase, { retries: 8, delayMs: 180 });
+        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
+        if (session?.user?.id) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role, active")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          const role = String(profile?.role || "").toLowerCase();
+          setCanManageByProfile(Boolean(profile?.active) && (role === "admin" || role === "manager" || role === "super_admin"));
+        } else {
+          setCanManageByProfile(false);
+        }
 
         const [
           { data: tData, error: tError },
@@ -248,6 +260,7 @@ export default function TournamentDetail() {
     () => sortedRounds.filter((roundName) => !configuredRoundNames.includes(roundName)),
     [configuredRoundNames, sortedRounds]
   );
+  const canManageTournament = isAdmin || isManager || canManageByProfile;
 
   if (loading) {
     return (
@@ -291,7 +304,7 @@ export default function TournamentDetail() {
             </div>
           </div>
 
-          {!roleLoading && (isAdmin || isManager) && (
+          {(!roleLoading || canManageByProfile) && canManageTournament && (
             <div className="flex flex-wrap gap-2 mt-3">
               <button
                 type="button"

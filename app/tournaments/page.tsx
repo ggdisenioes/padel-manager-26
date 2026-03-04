@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
 import { useTranslation } from "../i18n";
 import { useRole } from "../hooks/useRole";
+import { waitForSession } from "../lib/auth-session";
 
 type Tournament = {
   id: number;
@@ -26,8 +27,10 @@ export default function TournamentsPage() {
   const { isAdmin, isManager, loading: roleLoading } = useRole();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loading, setLoading] = useState(true);
+  const [canManageByProfile, setCanManageByProfile] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const dateLocale = locale === "en" ? "en-US" : "es-ES";
-  const canManageTournaments = isAdmin || isManager;
+  const canManageTournaments = isAdmin || isManager || canManageByProfile;
 
   const STATUS_MAP = {
     en_curso: {
@@ -77,6 +80,38 @@ export default function TournamentsPage() {
     load();
   }, [t]);
 
+  useEffect(() => {
+    let mounted = true;
+    const checkManageRole = async () => {
+      try {
+        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
+        if (!session?.user?.id) {
+          if (mounted) setProfileChecked(true);
+          return;
+        }
+        const { data } = await supabase
+          .from("profiles")
+          .select("role, active")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+        const role = String(data?.role || "").toLowerCase();
+        const canManage = Boolean(data?.active) && (role === "admin" || role === "manager" || role === "super_admin");
+        if (mounted) {
+          setCanManageByProfile(canManage);
+          setProfileChecked(true);
+        }
+      } catch {
+        if (mounted) setProfileChecked(true);
+      }
+    };
+
+    checkManageRole();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleDeleteTournament = async (id: number) => {
     const confirmed = window.confirm(t("tournaments.deleteConfirm"));
     if (!confirmed) return;
@@ -104,7 +139,7 @@ export default function TournamentsPage() {
             </p>
           </div>
 
-          {!roleLoading && canManageTournaments && (
+          {(canManageTournaments && (!roleLoading || profileChecked)) && (
             <Link
               href="/tournaments/create"
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition"
@@ -248,7 +283,7 @@ export default function TournamentsPage() {
                       {t("common.details")} →
                     </Link>
 
-                    {!roleLoading && canManageTournaments && (
+                    {(canManageTournaments && (!roleLoading || profileChecked)) && (
                       <div className="flex gap-3 text-sm">
                         <Link
                           href={`/tournaments/edit/${tournament.id}`}

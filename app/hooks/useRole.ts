@@ -55,15 +55,22 @@ export function useRole() {
 
   useEffect(() => {
     let active = true;
+    let lateRetryScheduled = false;
 
     const loadRole = async () => {
       try {
-        const session = await waitForSession(supabase, { retries: 12, delayMs: 180 });
+        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
 
         if (!session?.user?.id) {
           if (active) {
             setRole("user");
             setLoading(false);
+          }
+          if (!lateRetryScheduled) {
+            lateRetryScheduled = true;
+            setTimeout(() => {
+              if (active) void loadRole();
+            }, 1200);
           }
           return;
         }
@@ -144,8 +151,6 @@ export function useRole() {
       }
     };
 
-    void loadRole();
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
@@ -159,6 +164,8 @@ export function useRole() {
         void loadRole();
       }
     });
+
+    void loadRole();
 
     return () => {
       active = false;

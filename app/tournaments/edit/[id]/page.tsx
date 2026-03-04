@@ -9,6 +9,7 @@ import { useRole } from "../../../hooks/useRole";
 import MatchCard from "../../../components/matches/MatchCard";
 import toast from "react-hot-toast";
 import MatchShareCard from "../../../components/matches/MatchShareCard";
+import { waitForSession } from "../../../lib/auth-session";
 
 export default function EditTournament() {
   const router = useRouter();
@@ -24,24 +25,54 @@ export default function EditTournament() {
     status: "abierto",
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [canManageByProfile, setCanManageByProfile] = useState(false);
 
   const { isAdmin, isManager, loading: roleLoading } = useRole();
+  const canManageTournament = isAdmin || isManager || canManageByProfile;
   const [matches, setMatches] = useState<any[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<number, string>>({});
   const [openResultMatch, setOpenResultMatch] = useState<any | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+    const checkManageRole = async () => {
+      try {
+        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
+        if (!session?.user?.id) {
+          if (mounted) setCanManageByProfile(false);
+          return;
+        }
+        const { data } = await supabase
+          .from("profiles")
+          .select("role, active")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        const role = String(data?.role || "").toLowerCase();
+        if (mounted) {
+          setCanManageByProfile(Boolean(data?.active) && (role === "admin" || role === "manager" || role === "super_admin"));
+        }
+      } catch {
+        if (mounted) setCanManageByProfile(false);
+      }
+    };
+    checkManageRole();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Cargar datos del torneo y partidos
   useEffect(() => {
-    if (roleLoading) return;
-    if (!isAdmin && !isManager) {
+    if (roleLoading && !canManageByProfile) return;
+    if (!canManageTournament) {
       toast.error("No tenés permisos para editar torneos");
       router.replace("/tournaments");
     }
-  }, [isAdmin, isManager, roleLoading, router]);
+  }, [canManageByProfile, canManageTournament, roleLoading, router]);
 
   useEffect(() => {
-    if (roleLoading || (!isAdmin && !isManager)) return;
+    if ((roleLoading && !canManageByProfile) || !canManageTournament) return;
 
     const getTournamentAndMatches = async () => {
       if (!idNumber || isNaN(idNumber)) {
@@ -128,9 +159,9 @@ export default function EditTournament() {
     };
 
     getTournamentAndMatches();
-  }, [idNumber, isAdmin, isManager, roleLoading]);
+  }, [canManageByProfile, canManageTournament, idNumber, roleLoading]);
 
-  if (roleLoading) {
+  if (roleLoading && !canManageByProfile) {
     return (
       <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20">
         <p className="text-gray-600">Validando permisos...</p>

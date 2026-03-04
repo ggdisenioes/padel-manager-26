@@ -9,7 +9,6 @@ import { useRole } from "../../../hooks/useRole";
 import MatchCard from "../../../components/matches/MatchCard";
 import toast from "react-hot-toast";
 import MatchShareCard from "../../../components/matches/MatchShareCard";
-import { waitForSession } from "../../../lib/auth-session";
 
 export default function EditTournament() {
   const router = useRouter();
@@ -38,19 +37,10 @@ export default function EditTournament() {
     let mounted = true;
     const checkManageRole = async () => {
       try {
-        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
-        if (!session?.user?.id) {
-          if (mounted) setCanManageByProfile(false);
-          return;
-        }
-        const { data } = await supabase
-          .from("profiles")
-          .select("role, active")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        const role = String(data?.role || "").toLowerCase();
+        const res = await fetch("/api/auth/whoami-role", { cache: "no-store" });
+        const data = await res.json().catch(() => null);
         if (mounted) {
-          setCanManageByProfile(Boolean(data?.active) && (role === "admin" || role === "manager" || role === "super_admin"));
+          setCanManageByProfile(Boolean(data?.can_manage_tournaments));
         }
       } catch {
         if (mounted) setCanManageByProfile(false);

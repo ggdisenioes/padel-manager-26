@@ -60,19 +60,16 @@ export default function TournamentDetail() {
       setLoading(true);
 
       try {
-        // Esperamos a que la sesión esté restaurada para evitar falsos "no encontrado" por RLS.
-        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
-        if (session?.user?.id) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role, active")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          const role = String(profile?.role || "").toLowerCase();
-          setCanManageByProfile(Boolean(profile?.active) && (role === "admin" || role === "manager" || role === "super_admin"));
-        } else {
+        try {
+          const roleRes = await fetch("/api/auth/whoami-role", { cache: "no-store" });
+          const roleData = await roleRes.json().catch(() => null);
+          setCanManageByProfile(Boolean(roleData?.can_manage_tournaments));
+        } catch {
           setCanManageByProfile(false);
         }
+
+        // Esperamos a que la sesión esté restaurada para evitar falsos "no encontrado" por RLS.
+        await waitForSession(supabase, { retries: 16, delayMs: 180 });
 
         const [
           { data: tData, error: tError },

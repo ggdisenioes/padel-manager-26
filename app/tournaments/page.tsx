@@ -7,7 +7,6 @@ import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
 import { useTranslation } from "../i18n";
 import { useRole } from "../hooks/useRole";
-import { waitForSession } from "../lib/auth-session";
 
 type Tournament = {
   id: number;
@@ -84,19 +83,9 @@ export default function TournamentsPage() {
     let mounted = true;
     const checkManageRole = async () => {
       try {
-        const session = await waitForSession(supabase, { retries: 16, delayMs: 180 });
-        if (!session?.user?.id) {
-          if (mounted) setProfileChecked(true);
-          return;
-        }
-        const { data } = await supabase
-          .from("profiles")
-          .select("role, active")
-          .eq("id", session.user.id)
-          .maybeSingle();
-
-        const role = String(data?.role || "").toLowerCase();
-        const canManage = Boolean(data?.active) && (role === "admin" || role === "manager" || role === "super_admin");
+        const res = await fetch("/api/auth/whoami-role", { cache: "no-store" });
+        const data = await res.json().catch(() => null);
+        const canManage = Boolean(data?.can_manage_tournaments);
         if (mounted) {
           setCanManageByProfile(canManage);
           setProfileChecked(true);

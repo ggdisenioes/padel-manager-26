@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import MatchCard, { type Match } from "../../components/matches/MatchCard";
 import { useTranslation } from "../../i18n";
 import { useRole } from "../../hooks/useRole";
+import { waitForSession } from "../../lib/auth-session";
 
 type Tournament = {
   id: number;
@@ -58,6 +59,9 @@ export default function TournamentDetail() {
       setLoading(true);
 
       try {
+        // Esperamos a que la sesión esté restaurada para evitar falsos "no encontrado" por RLS.
+        await waitForSession(supabase, { retries: 8, delayMs: 180 });
+
         const [
           { data: tData, error: tError },
           { data: mData, error: mError },

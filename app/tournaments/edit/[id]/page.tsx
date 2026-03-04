@@ -10,6 +10,25 @@ import MatchCard from "../../../components/matches/MatchCard";
 import toast from "react-hot-toast";
 import MatchShareCard from "../../../components/matches/MatchShareCard";
 
+type TournamentRound = {
+  id: number;
+  round_number: number;
+  round_name: string;
+  start_at: string;
+};
+
+function toDateTimeLocalValue(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export default function EditTournament() {
   const router = useRouter();
   const params = useParams();
@@ -21,6 +40,7 @@ export default function EditTournament() {
     name: "",
     category: "",
     start_date: "",
+    end_date: "",
     status: "abierto",
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,6 +49,14 @@ export default function EditTournament() {
   const { isAdmin, isManager, loading: roleLoading } = useRole();
   const canManageTournament = isAdmin || isManager || canManageByProfile;
   const [matches, setMatches] = useState<any[]>([]);
+  const [rounds, setRounds] = useState<TournamentRound[]>([]);
+  const [roundsBusy, setRoundsBusy] = useState(false);
+  const [newRoundName, setNewRoundName] = useState("");
+  const [newRoundStartAt, setNewRoundStartAt] = useState("");
+  const [editingRoundId, setEditingRoundId] = useState<number | null>(null);
+  const [editingRoundName, setEditingRoundName] = useState("");
+  const [editingRoundStartAt, setEditingRoundStartAt] = useState("");
+  const [tenantId, setTenantId] = useState<string>("");
   const [playersMap, setPlayersMap] = useState<Record<number, string>>({});
   const [openResultMatch, setOpenResultMatch] = useState<any | null>(null);
   const shareCardRef = useRef<HTMLDivElement | null>(null);
@@ -90,8 +118,13 @@ export default function EditTournament() {
             name: data.name || "",
             category: data.category || "",
             start_date: data.start_date ? data.start_date.split("T")[0] : "",
+            end_date: data.end_date ? data.end_date.split("T")[0] : "",
             status: data.status || "abierto",
           });
+          setTenantId(data.tenant_id || "");
+          if (data.start_date) {
+            setNewRoundStartAt((prev) => prev || `${data.start_date.split("T")[0]}T20:00`);
+          }
         }
       } catch (err) {
         console.error("Excepción al cargar torneo:", err);
@@ -101,18 +134,28 @@ export default function EditTournament() {
       }
 
       try {
-        const { data: matchesData, error: matchesError } = await supabase
-          .from("matches")
-          .select(`
-            id, tournament_id, round_name, place, court, start_time, score, winner,
-            player_1_a, player_2_a, player_1_b, player_2_b,
-            p1a:players!matches_player_1_a_fkey(id,name),
-            p2a:players!matches_player_2_a_fkey(id,name),
-            p1b:players!matches_player_1_b_fkey(id,name),
-            p2b:players!matches_player_2_b_fkey(id,name)
-          `)
-          .eq("tournament_id", idNumber)
-          .order("start_time", { ascending: true });
+        const [
+          { data: matchesData, error: matchesError },
+          { data: roundsData, error: roundsError },
+        ] = await Promise.all([
+          supabase
+            .from("matches")
+            .select(`
+              id, tournament_id, round_name, place, court, start_time, score, winner,
+              player_1_a, player_2_a, player_1_b, player_2_b,
+              p1a:players!matches_player_1_a_fkey(id,name),
+              p2a:players!matches_player_2_a_fkey(id,name),
+              p1b:players!matches_player_1_b_fkey(id,name),
+              p2b:players!matches_player_2_b_fkey(id,name)
+            `)
+            .eq("tournament_id", idNumber)
+            .order("start_time", { ascending: true }),
+          supabase
+            .from("tournament_rounds")
+            .select("id, round_number, round_name, start_at")
+            .eq("tournament_id", idNumber)
+            .order("round_number", { ascending: true }),
+        ]);
 
         if (matchesError) {
           console.error("Error cargando partidos del torneo:", matchesError);
@@ -120,7 +163,6 @@ export default function EditTournament() {
         } else {
           const normalized = (matchesData ?? []).map((m: any) => ({
             ...m,
-            // Pasamos a MatchCard valores que pueden ser number o {id,name}. Preferimos el objeto si está.
             player_1_a: m.p1a ?? m.player_1_a,
             player_2_a: m.p2a ?? m.player_2_a,
             player_1_b: m.p1b ?? m.player_1_b,
@@ -140,9 +182,17 @@ export default function EditTournament() {
           });
           setPlayersMap(map);
         }
+
+        if (roundsError) {
+          console.error("Error cargando jornadas del torneo:", roundsError);
+          setRounds([]);
+        } else {
+          setRounds((roundsData || []) as TournamentRound[]);
+        }
       } catch (err) {
-        console.error("Excepción al cargar partidos:", err);
+        console.error("Excepción al cargar partidos/jornadas:", err);
         setMatches([]);
+        setRounds([]);
       } finally {
         setLoading(false);
       }
@@ -169,15 +219,46 @@ export default function EditTournament() {
       return;
     }
 
-    const { error } = await supabase
+    const normalizedStatus = String(formData.status || "").toLowerCase();
+    const mustHaveEndDate = normalizedStatus === "finalizado";
+    const normalizedEndDate = formData.end_date ? formData.end_date : null;
+
+    if (mustHaveEndDate && !normalizedEndDate) {
+      setLoading(false);
+      toast.error("Para finalizar el torneo debés indicar una fecha de finalización");
+      return;
+    }
+
+    const payloadWithEndDate = {
+      name: formData.name,
+      category: formData.category,
+      start_date: formData.start_date || null,
+      end_date: mustHaveEndDate ? normalizedEndDate : null,
+      status: formData.status,
+    };
+
+    let { error } = await supabase
       .from("tournaments")
-      .update({
+      .update(payloadWithEndDate)
+      .eq("id", idNumber);
+
+    if (
+      error &&
+      /end_date/i.test(error.message || "") &&
+      /(does not exist|column)/i.test(error.message || "")
+    ) {
+      const fallbackPayload = {
         name: formData.name,
         category: formData.category,
-        start_date: formData.start_date,
+        start_date: formData.start_date || null,
         status: formData.status,
-      })
-      .eq("id", idNumber);
+      };
+      const fallbackRes = await supabase
+        .from("tournaments")
+        .update(fallbackPayload)
+        .eq("id", idNumber);
+      error = fallbackRes.error;
+    }
 
     if (error) {
       console.error("Error UPDATE tournaments:", error);
@@ -202,6 +283,210 @@ export default function EditTournament() {
     } else {
       setMatches((prev) => prev.filter((m) => m.id !== matchId));
     }
+  };
+
+  const getNextRoundNumber = () => {
+    const numbers = new Set(rounds.map((round) => round.round_number));
+    let next = 1;
+    while (numbers.has(next)) next += 1;
+    return next;
+  };
+
+  const handleAddRound = async () => {
+    const parsed = new Date(newRoundStartAt);
+    if (!newRoundStartAt || Number.isNaN(parsed.getTime())) {
+      toast.error("Seleccioná fecha y hora de inicio de la jornada");
+      return;
+    }
+
+    const nextRoundNumber = getNextRoundNumber();
+    const nextRoundName = newRoundName.trim() || `Fecha ${nextRoundNumber}`;
+
+    setRoundsBusy(true);
+
+    let effectiveTenantId = tenantId;
+    if (!effectiveTenantId) {
+      const { data: tenantData, error: tenantError } = await supabase
+        .from("tournaments")
+        .select("tenant_id")
+        .eq("id", idNumber)
+        .single();
+
+      if (tenantError || !tenantData?.tenant_id) {
+        console.error("Error resolviendo tenant del torneo:", tenantError);
+        setRoundsBusy(false);
+        toast.error("No se pudo resolver el tenant del torneo");
+        return;
+      }
+
+      effectiveTenantId = tenantData.tenant_id;
+      setTenantId(effectiveTenantId);
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+      .from("tournament_rounds")
+      .insert({
+        tournament_id: idNumber,
+        tenant_id: effectiveTenantId,
+        round_number: nextRoundNumber,
+        round_name: nextRoundName,
+        start_at: parsed.toISOString(),
+        created_by: user?.id ?? null,
+      })
+      .select("id, round_number, round_name, start_at")
+      .single();
+
+    setRoundsBusy(false);
+
+    if (error || !data) {
+      console.error("Error creando jornada:", error);
+      toast.error("No se pudo crear la jornada");
+      return;
+    }
+
+    setRounds((prev) =>
+      [...prev, data as TournamentRound].sort((a, b) => a.round_number - b.round_number)
+    );
+    setNewRoundName("");
+    toast.success("Jornada creada");
+  };
+
+  const startEditRound = (round: TournamentRound) => {
+    setEditingRoundId(round.id);
+    setEditingRoundName(round.round_name);
+    setEditingRoundStartAt(toDateTimeLocalValue(round.start_at));
+  };
+
+  const cancelEditRound = () => {
+    setEditingRoundId(null);
+    setEditingRoundName("");
+    setEditingRoundStartAt("");
+  };
+
+  const handleSaveRoundEdit = async (round: TournamentRound) => {
+    const trimmedName = editingRoundName.trim();
+    if (!trimmedName) {
+      toast.error("El nombre de la jornada es obligatorio");
+      return;
+    }
+
+    const parsed = new Date(editingRoundStartAt);
+    if (!editingRoundStartAt || Number.isNaN(parsed.getTime())) {
+      toast.error("Seleccioná una fecha y hora válida para la jornada");
+      return;
+    }
+
+    setRoundsBusy(true);
+
+    const isRenaming = trimmedName !== round.round_name;
+    if (isRenaming) {
+      const { error: renameMatchesError } = await supabase
+        .from("matches")
+        .update({ round_name: trimmedName })
+        .eq("tournament_id", idNumber)
+        .eq("round_name", round.round_name);
+
+      if (renameMatchesError) {
+        console.error("Error renombrando partidos de la jornada:", renameMatchesError);
+        setRoundsBusy(false);
+        toast.error("No se pudo actualizar el nombre en los partidos de la jornada");
+        return;
+      }
+    }
+
+    const { error: updateRoundError } = await supabase
+      .from("tournament_rounds")
+      .update({
+        round_name: trimmedName,
+        start_at: parsed.toISOString(),
+      })
+      .eq("id", round.id);
+
+    if (updateRoundError) {
+      console.error("Error actualizando jornada:", updateRoundError);
+      if (isRenaming) {
+        await supabase
+          .from("matches")
+          .update({ round_name: round.round_name })
+          .eq("tournament_id", idNumber)
+          .eq("round_name", trimmedName);
+      }
+      setRoundsBusy(false);
+      toast.error("No se pudo editar la jornada");
+      return;
+    }
+
+    setRounds((prev) =>
+      prev.map((item) =>
+        item.id === round.id
+          ? {
+              ...item,
+              round_name: trimmedName,
+              start_at: parsed.toISOString(),
+            }
+          : item
+      )
+    );
+    if (isRenaming) {
+      setMatches((prev) =>
+        prev.map((match) =>
+          match.round_name === round.round_name
+            ? { ...match, round_name: trimmedName }
+            : match
+        )
+      );
+    }
+
+    setRoundsBusy(false);
+    cancelEditRound();
+    toast.success("Jornada actualizada");
+  };
+
+  const handleDeleteRound = async (round: TournamentRound) => {
+    const confirmDelete = confirm(`¿Eliminar ${round.round_name}?`);
+    if (!confirmDelete) return;
+
+    setRoundsBusy(true);
+
+    const { count, error: countError } = await supabase
+      .from("matches")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", idNumber)
+      .eq("round_name", round.round_name);
+
+    if (countError) {
+      console.error("Error validando partidos de la jornada:", countError);
+      setRoundsBusy(false);
+      toast.error("No se pudo validar la jornada");
+      return;
+    }
+
+    if ((count || 0) > 0) {
+      setRoundsBusy(false);
+      toast.error("Debe eliminar los partidos para eliminar la jornada");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("tournament_rounds")
+      .delete()
+      .eq("id", round.id);
+
+    setRoundsBusy(false);
+
+    if (error) {
+      console.error("Error eliminando jornada:", error);
+      toast.error("No se pudo eliminar la jornada");
+      return;
+    }
+
+    setRounds((prev) => prev.filter((item) => item.id !== round.id));
+    if (editingRoundId === round.id) cancelEditRound();
+    toast.success("Jornada eliminada");
   };
 
   const isPlayed = (m: any) =>
@@ -309,6 +594,25 @@ export default function EditTournament() {
               />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Fecha de finalización
+              </label>
+              <input
+                type="date"
+                className="w-full p-2 border border-gray-300 rounded outline-none"
+                value={formData.end_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, end_date: e.target.value })
+                }
+              />
+              {formData.status === "finalizado" && !formData.end_date && (
+                <p className="mt-1 text-xs text-red-600">
+                  Para finalizar el torneo, cargá la fecha de finalización.
+                </p>
+              )}
+            </div>
+
             {/* Botones */}
             <div className="flex justify-end gap-3 mt-4">
               <button
@@ -329,9 +633,121 @@ export default function EditTournament() {
 
           <hr className="my-8" />
 
+          <h3 className="text-xl font-bold mb-4">Jornadas</h3>
+
+          <div className="space-y-3 mb-4">
+            {rounds.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay jornadas cargadas para este torneo.</p>
+            ) : (
+              rounds.map((round) => (
+                <div
+                  key={round.id}
+                  className="border border-gray-200 rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                >
+                  {editingRoundId === round.id ? (
+                    <div className="w-full space-y-2">
+                      <input
+                        type="text"
+                        value={editingRoundName}
+                        onChange={(e) => setEditingRoundName(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded outline-none"
+                        placeholder="Nombre de la jornada"
+                      />
+                      <input
+                        type="datetime-local"
+                        value={editingRoundStartAt}
+                        onChange={(e) => setEditingRoundStartAt(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-semibold text-gray-800">{round.round_name}</p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(round.start_at).toLocaleString("es-ES", {
+                          dateStyle: "short",
+                          timeStyle: "short",
+                          timeZone: "Europe/Madrid",
+                        })}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {editingRoundId === round.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRoundEdit(round)}
+                          disabled={roundsBusy}
+                          className="px-3 py-1 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditRound}
+                          disabled={roundsBusy}
+                          className="px-3 py-1 rounded-md bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditRound(round)}
+                        disabled={roundsBusy}
+                        className="px-3 py-1 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Editar jornada
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteRound(round)}
+                      disabled={roundsBusy}
+                      className="px-3 py-1 rounded-md bg-red-100 text-red-700 text-sm hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Eliminar jornada
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="border border-dashed border-gray-300 rounded-lg p-4 space-y-3 mb-8">
+            <p className="font-semibold text-gray-800">Agregar jornada</p>
+            <input
+              type="text"
+              value={newRoundName}
+              onChange={(e) => setNewRoundName(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded outline-none"
+              placeholder={`Nombre (opcional, por defecto "Fecha ${getNextRoundNumber()}")`}
+            />
+            <input
+              type="datetime-local"
+              value={newRoundStartAt}
+              onChange={(e) => setNewRoundStartAt(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleAddRound}
+              disabled={roundsBusy}
+              className="px-4 py-2 text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Agregar jornada
+            </button>
+          </div>
+
+          <hr className="my-8" />
+
           <h3 className="text-xl font-bold mb-4">Partidos del Torneo</h3>
 
-          {(isAdmin || isManager) && (
+          {canManageTournament && (
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 type="button"

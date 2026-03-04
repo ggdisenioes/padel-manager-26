@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 type CookieToSet = {
   name: string;
@@ -24,8 +25,9 @@ function normalizeRole(value: unknown): string {
 export async function GET(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
   }
 
@@ -75,7 +77,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { data: profile } = await supabase
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: profile } = await adminClient
     .from("profiles")
     .select("role, active")
     .eq("id", user.id)

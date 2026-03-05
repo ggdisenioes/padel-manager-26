@@ -223,7 +223,10 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
         <div>
           <p className="px-6 py-2 text-xs font-semibold text-gray-400 uppercase tracking-widest">General</p>
           {generalMenuItems
-            .filter(item => !item.requiredFeature || hasFeature(item.requiredFeature))
+            .filter(item => {
+              if (isTwincoTenant && item.id === "bookings") return false;
+              return !item.requiredFeature || hasFeature(item.requiredFeature);
+            })
             .map(renderMenuItem)}
         </div>
 

@@ -10,6 +10,8 @@ import Card from "../components/Card";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "../i18n";
+import { getClientCache, setClientCache } from "../lib/clientCache";
+import { waitForSession } from "../lib/auth-session";
 
 type PlayerRow = {
   id: number;
@@ -21,6 +23,23 @@ type PlayerRow = {
   deleted_at?: string | null;
   deleted_by?: string | null;
 };
+
+type PlayersCachePayload = {
+  role: string;
+  players: PlayerRow[];
+};
+
+const PLAYERS_CACHE_KEY_PREFIX = "padelx:players:list:v1:";
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Timeout loading players")), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
 
 const logAction = async ({
   action,
@@ -77,27 +96,50 @@ export default function PlayersPage() {
   const [search, setSearch] = useState("");
 
   const { role, isAdmin, isManager, loading: roleLoading } = useRole();
+  const playersCacheKey = `${PLAYERS_CACHE_KEY_PREFIX}${role || "unknown"}`;
 
   const fetchPlayers = useCallback(async () => {
-    setLoading(true);
-
-    let query = supabase.from("players").select("*").order("name", { ascending: true });
-
-    if (role === "user") {
-      query = query.eq("is_approved", true).is("deleted_at", null);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Error al cargar jugadores:", error);
-      toast.error(`${t("players.errorLoading")}: ${error.message}`, { duration: 5000 });
-      setPlayers([]);
+    const cached = getClientCache<PlayersCachePayload>(playersCacheKey, 90 * 1000);
+    if (cached && cached.role === role) {
+      setPlayers(cached.players || []);
+      setLoading(false);
     } else {
-      setPlayers((data as PlayerRow[]) || []);
+      setLoading(true);
     }
-    setLoading(false);
-  }, [role, t]);
+
+    try {
+      await waitForSession(supabase, { retries: 8, delayMs: 140 });
+
+      let query = supabase.from("players").select("*").order("name", { ascending: true });
+      if (role === "user") {
+        query = query.eq("is_approved", true).is("deleted_at", null);
+      }
+
+      const { data, error } = await promiseWithTimeout(query, 10_000);
+
+      if (error) {
+        console.error("Error al cargar jugadores:", error);
+        toast.error(`${t("players.errorLoading")}: ${error.message}`, { duration: 5000 });
+        if (!cached) setPlayers([]);
+        return;
+      }
+
+      const nextPlayers = (data as PlayerRow[]) || [];
+      setPlayers(nextPlayers);
+      setClientCache<PlayersCachePayload>(playersCacheKey, {
+        role,
+        players: nextPlayers,
+      });
+    } catch (error) {
+      console.error("Unexpected players load error:", error);
+      if (!cached) {
+        toast.error(t("players.errorLoading"), { duration: 5000 });
+        setPlayers([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [playersCacheKey, role, t]);
 
   useEffect(() => {
     if (roleLoading) return;

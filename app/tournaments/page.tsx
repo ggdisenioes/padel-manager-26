@@ -7,6 +7,8 @@ import toast from "react-hot-toast";
 import { supabase } from "../lib/supabase";
 import { useTranslation } from "../i18n";
 import { useRole } from "../hooks/useRole";
+import { getClientCache, setClientCache } from "../lib/clientCache";
+import { waitForSession } from "../lib/auth-session";
 
 type Tournament = {
   id: number;
@@ -20,6 +22,24 @@ type Tournament = {
   total_matches: number;
   prize: string | null;
 };
+
+type TournamentsCachePayload = {
+  tournaments: Tournament[];
+};
+
+const TOURNAMENTS_CACHE_KEY = "padelx:tournaments:list:v1";
+const TOURNAMENTS_CACHE_TTL_MS = 90 * 1000;
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Timeout loading tournaments")), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
 
 export default function TournamentsPage() {
   const { t, locale } = useTranslation();
@@ -47,36 +67,81 @@ export default function TournamentsPage() {
   };
 
   useEffect(() => {
-    const load = async () => {
-      const { data, error } = await supabase
-        .from("tournaments")
-        .select("*")
-        .order("start_date", { ascending: false });
-
-      if (error) {
-        toast.error(t("tournaments.errorLoading"));
-        console.error(error);
-      } else {
-        const ids = (data ?? []).map((t: any) => t.id);
-        const { data: stats } = await supabase
-          .from("tournament_match_stats")
-          .select("tournament_id, total_matches, played_matches")
-          .in("tournament_id", ids);
-        const statsMap = Object.fromEntries(
-          (stats ?? []).map((s: any) => [s.tournament_id, s])
-        );
-        const normalized = (data || []).map((t: any) => ({
-          ...t,
-          total_matches: statsMap[t.id]?.total_matches ?? 0,
-          played_matches: statsMap[t.id]?.played_matches ?? 0,
-        }));
-        setTournaments(normalized);
-      }
-
+    const cached = getClientCache<TournamentsCachePayload>(
+      TOURNAMENTS_CACHE_KEY,
+      TOURNAMENTS_CACHE_TTL_MS
+    );
+    if (cached) {
+      setTournaments(cached.tournaments || []);
       setLoading(false);
+    }
+
+    const load = async () => {
+      try {
+        await waitForSession(supabase, { retries: 8, delayMs: 140 });
+
+        const { data, error } = await promiseWithTimeout(
+          supabase
+            .from("tournaments")
+            .select("*")
+            .order("start_date", { ascending: false }),
+          10_000
+        );
+
+        if (error) {
+          toast.error(t("tournaments.errorLoading"));
+          console.error(error);
+          return;
+        }
+
+        const baseRows = (data || []) as Tournament[];
+        const ids = baseRows.map((row) => row.id).filter(Boolean);
+
+        let statsMap: Record<number, { total_matches: number; played_matches: number }> = {};
+        if (ids.length > 0) {
+          const { data: stats, error: statsError } = await promiseWithTimeout(
+            supabase
+              .from("tournament_match_stats")
+              .select("tournament_id, total_matches, played_matches")
+              .in("tournament_id", ids),
+            10_000
+          );
+
+          if (statsError) {
+            console.error("Error loading tournament stats:", statsError);
+          } else {
+            statsMap = Object.fromEntries(
+              ((stats ?? []) as Array<{
+                tournament_id: number;
+                total_matches: number;
+                played_matches: number;
+              }>).map((s) => [s.tournament_id, s])
+            );
+          }
+        }
+
+        const normalized = baseRows.map((row) => ({
+          ...row,
+          total_matches: statsMap[row.id]?.total_matches ?? 0,
+          played_matches: statsMap[row.id]?.played_matches ?? 0,
+        }));
+
+        setTournaments(normalized);
+        setClientCache<TournamentsCachePayload>(TOURNAMENTS_CACHE_KEY, {
+          tournaments: normalized,
+        });
+      } catch (loadError) {
+        console.error("Unexpected tournaments load error:", loadError);
+        if (!cached) {
+          toast.error(t("tournaments.errorLoading"));
+          setTournaments([]);
+        }
+      } finally {
+        setLoading(false);
+      }
     };
 
-    load();
+    void load();
   }, [t]);
 
   useEffect(() => {

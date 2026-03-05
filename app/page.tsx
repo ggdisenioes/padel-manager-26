@@ -121,6 +121,27 @@ type FinishedMatch = {
   created_at: string;
 };
 
+const MADRID_TIME_ZONE = "Europe/Madrid";
+
+function toMadridDateKey(input: string | Date): string | null {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: MADRID_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  if (!year || !month || !day) return null;
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function DashboardPage() {
   const { t } = useTranslation();
   const [countPlayers, setCountPlayers] = useState(0);
@@ -318,9 +339,9 @@ export default function DashboardPage() {
           return;
         }
 
-        const start7d = new Date();
-        start7d.setDate(start7d.getDate() - 6);
-        start7d.setHours(0, 0, 0, 0);
+        const start7dQuery = new Date();
+        start7dQuery.setDate(start7dQuery.getDate() - 8);
+        start7dQuery.setHours(0, 0, 0, 0);
         const nowIso = new Date().toISOString();
 
         const safeQuery = async <T,>(label: string, query: Promise<T>): Promise<T | null> => {
@@ -361,7 +382,7 @@ export default function DashboardPage() {
             supabase
               .from("matches")
               .select("start_time, winner")
-              .gte("start_time", start7d.toISOString())
+              .gte("start_time", start7dQuery.toISOString())
           ),
           safeQuery(
             "finished matches query",
@@ -449,12 +470,17 @@ export default function DashboardPage() {
 
         if (matches7dRes) {
           const days: { key: string; label: string }[] = [];
-          for (let i = 0; i < 7; i++) {
-            const d = new Date(start7d);
-            d.setDate(start7d.getDate() + i);
+          for (let offset = 6; offset >= 0; offset -= 1) {
+            const d = new Date();
+            d.setDate(d.getDate() - offset);
+            const key = toMadridDateKey(d);
+            if (!key) continue;
             days.push({
-              key: d.toISOString().slice(0, 10),
-              label: d.toLocaleDateString("es-ES", { weekday: "short" }),
+              key,
+              label: d.toLocaleDateString("es-ES", {
+                weekday: "short",
+                timeZone: MADRID_TIME_ZONE,
+              }),
             });
           }
 
@@ -465,7 +491,8 @@ export default function DashboardPage() {
 
           for (const row of (matches7dRes.data || []) as { start_time: string | null; winner: string | null }[]) {
             if (!row.start_time) continue;
-            const key = new Date(row.start_time).toISOString().slice(0, 10);
+            const key = toMadridDateKey(row.start_time);
+            if (!key) continue;
             if (!byDay[key]) continue;
             const isPending = !row.winner || String(row.winner).toLowerCase() === "pending";
             if (isPending) byDay[key].pending += 1;

@@ -11,6 +11,7 @@ import { useRole } from "../hooks/useRole";
 import MatchCard from "../components/matches/MatchCard";
 import { formatDateMadrid, formatTimeMadrid } from "@/lib/dates";
 import { useTranslation } from "../i18n";
+import { getClientCache, setClientCache } from "../lib/clientCache";
 
 type PlayerRef = {
   id: number;
@@ -48,6 +49,35 @@ type Tournament = {
 
 type View = "pending" | "finished" | "all";
 
+type MatchesCachePayload = {
+  matches: Match[];
+  playersMapObj: Record<number, string>;
+  tournaments: Tournament[];
+};
+
+const MATCHES_CACHE_KEY = "qa:matches:list:v1";
+const MATCHES_CACHE_TTL_MS = 90 * 1000;
+const MATCHES_QUERY_TIMEOUT_MS = 12_000;
+const PLAYERS_QUERY_TIMEOUT_MS = 4_500;
+
+function promiseWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Timeout al cargar ${label} (${timeoutMs}ms)`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
+
 export default function MatchesPage() {
   const { isAdmin, isManager, loading: roleLoading } = useRole();
   const searchParams = useSearchParams();
@@ -79,97 +109,178 @@ export default function MatchesPage() {
   useEffect(() => {
     let active = true;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let hydratedFromCache = false;
+    let fetching = false;
 
-    const loadData = async () => {
-      if (!active) return;
-      setLoading(true);
+    const cachedPayload = getClientCache<MatchesCachePayload>(
+      MATCHES_CACHE_KEY,
+      MATCHES_CACHE_TTL_MS
+    );
 
-      const [{ data: playersData, error: playersError }, { data: matchesData, error: matchError }, { data: tournamentsData }] =
-        await Promise.all([
-          supabase.from("players").select("id, name").order("name"),
-          supabase
-            .from("matches")
-            .select(`
-              id,
-              start_time,
-              tournament_id,
-              round_name,
-              score,
-              winner,
-              court,
-              place,
-              player_1_a_id,
-              player_2_a_id,
-              player_1_b_id,
-              player_2_b_id,
-              player_1_a:players!matches_player_1_a_fkey ( id, name ),
-              player_2_a:players!matches_player_2_a_fkey ( id, name ),
-              player_1_b:players!matches_player_1_b_fkey ( id, name ),
-              player_2_b:players!matches_player_2_b_fkey ( id, name )
-            `)
-            .order("start_time", { ascending: true })
-            .returns<Match[]>(),
-          supabase
-            .from("tournaments")
-            .select("id, name, category")
-            .order("name"),
-        ]);
-      if (!active) return;
+    if (cachedPayload) {
+      hydratedFromCache = true;
+      setMatches(cachedPayload.matches || []);
+      setPlayersMapObj(cachedPayload.playersMapObj || {});
+      setTournaments(cachedPayload.tournaments || []);
+      setLoading(false);
+    }
 
-      if (playersError) {
-        console.error(playersError);
-        toast.error(t("players.errorLoading"));
+    const loadData = async (background = false) => {
+      if (!active || fetching) return;
+      fetching = true;
+
+      if (!background && !hydratedFromCache) {
+        setLoading(true);
       }
 
-      const playersMap = new Map<number, string>(
-        (playersData ?? []).map((p: any) => [Number(p.id), String(p.name)])
-      );
+      try {
+        const playersRequest = supabase.from("players").select("id, name").order("name");
+        const matchesRequest = supabase
+          .from("matches")
+          .select(`
+            id,
+            start_time,
+            tournament_id,
+            round_name,
+            score,
+            winner,
+            court,
+            place,
+            player_1_a_id,
+            player_2_a_id,
+            player_1_b_id,
+            player_2_b_id,
+            player_1_a:players!matches_player_1_a_fkey ( id, name ),
+            player_2_a:players!matches_player_2_a_fkey ( id, name ),
+            player_1_b:players!matches_player_1_b_fkey ( id, name ),
+            player_2_b:players!matches_player_2_b_fkey ( id, name )
+          `)
+          .order("start_time", { ascending: true })
+          .returns<Match[]>();
 
-      const playersMapObj: Record<number, string> = {};
-      for (const [k, v] of playersMap.entries()) playersMapObj[k] = v;
-      setPlayersMapObj(playersMapObj);
+        const tournamentsRequest = supabase
+          .from("tournaments")
+          .select("id, name, category")
+          .order("name");
 
-      if (matchError) {
-        console.error(matchError);
-        toast.error(t("matches.errorLoading"));
-        setMatches([]);
-        setLoading(false);
-        return;
-      }
+        const [
+          { data: matchesData, error: matchError },
+          { data: tournamentsData, error: tournamentsError },
+        ] = await promiseWithTimeout(
+          Promise.all([matchesRequest, tournamentsRequest]),
+          MATCHES_QUERY_TIMEOUT_MS,
+          "partidos y torneos"
+        );
 
-      setTournaments(tournamentsData ?? []);
+        let playersData: any[] = [];
+        try {
+          const { data, error: playersError } = await promiseWithTimeout(
+            playersRequest,
+            PLAYERS_QUERY_TIMEOUT_MS,
+            "jugadores"
+          );
+          if (playersError) {
+            console.error(playersError);
+          } else {
+            playersData = data ?? [];
+          }
+        } catch (playersTimeoutError) {
+          console.warn(playersTimeoutError);
+        }
 
-      const normalizedMatches = (matchesData ?? []).map((m: any) => {
-        const resolve = (id: any) => {
-          const n = Number(id);
-          if (!Number.isFinite(n)) return null;
-          const name = playersMap.get(n);
-          if (!name) return null;
-          return { id: n, name } as PlayerRef;
+        if (!active) return;
+
+        if (matchError) {
+          throw matchError;
+        }
+        if (tournamentsError) {
+          console.error(tournamentsError);
+        }
+
+        const playersMap = new Map<number, string>(
+          playersData.map((p: any) => [Number(p.id), String(p.name)])
+        );
+
+        const addPlayerToMap = (player: any) => {
+          if (!player) return;
+          if (Array.isArray(player)) {
+            player.forEach(addPlayerToMap);
+            return;
+          }
+          if (typeof player !== "object") return;
+
+          const id = Number(player.id);
+          const name = String(player.name || "").trim();
+          if (!Number.isFinite(id) || !name) return;
+          playersMap.set(id, name);
         };
 
-        return {
-          ...m,
-          player_1_a: m.player_1_a ?? resolve(m.player_1_a_id),
-          player_2_a: m.player_2_a ?? resolve(m.player_2_a_id),
-          player_1_b: m.player_1_b ?? resolve(m.player_1_b_id),
-          player_2_b: m.player_2_b ?? resolve(m.player_2_b_id),
-        } as Match;
-      });
+        (matchesData ?? []).forEach((m: any) => {
+          addPlayerToMap(m.player_1_a);
+          addPlayerToMap(m.player_2_a);
+          addPlayerToMap(m.player_1_b);
+          addPlayerToMap(m.player_2_b);
+        });
 
-      setMatches(normalizedMatches);
-      setLoading(false);
+        const playersMapObj: Record<number, string> = {};
+        for (const [k, v] of playersMap.entries()) playersMapObj[k] = v;
+        setPlayersMapObj(playersMapObj);
+        setTournaments(tournamentsData ?? []);
+
+        const normalizePlayer = (raw: any, fallbackId: any) => {
+          const value = Array.isArray(raw) ? raw[0] : raw;
+          if (value && typeof value === "object") {
+            const id = Number(value.id);
+            const name = String(value.name || "").trim();
+            if (Number.isFinite(id) && name) return { id, name } as PlayerRef;
+          }
+
+          const n = Number(fallbackId);
+          if (!Number.isFinite(n)) return null;
+          const name = playersMap.get(n);
+          return name ? ({ id: n, name } as PlayerRef) : null;
+        };
+
+        const normalizedMatches = (matchesData ?? []).map((m: any) => ({
+          ...m,
+          player_1_a: normalizePlayer(m.player_1_a, m.player_1_a_id),
+          player_2_a: normalizePlayer(m.player_2_a, m.player_2_a_id),
+          player_1_b: normalizePlayer(m.player_1_b, m.player_1_b_id),
+          player_2_b: normalizePlayer(m.player_2_b, m.player_2_b_id),
+        })) as Match[];
+
+        setMatches(normalizedMatches);
+        setClientCache(MATCHES_CACHE_KEY, {
+          matches: normalizedMatches,
+          playersMapObj,
+          tournaments: tournamentsData ?? [],
+        });
+      } catch (error) {
+        console.error(error);
+        if (!hydratedFromCache) {
+          setMatches([]);
+          setTournaments([]);
+          setPlayersMapObj({});
+          toast.error(t("matches.errorLoading"));
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+        hydratedFromCache = true;
+        fetching = false;
+      }
     };
 
     const scheduleReload = () => {
       if (refreshTimer) return;
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
-        void loadData();
+        void loadData(true);
       }, 350);
     };
 
-    loadData();
+    void loadData(hydratedFromCache);
 
     // Realtime: debounce para evitar múltiples recargas en ráfaga.
     const channel = supabase
@@ -238,7 +349,15 @@ export default function MatchesPage() {
     }
 
     toast.success(t("matches.deleted"));
-    setMatches((prev) => prev.filter((m) => m.id !== matchId));
+    setMatches((prev) => {
+      const next = prev.filter((m) => m.id !== matchId);
+      setClientCache(MATCHES_CACHE_KEY, {
+        matches: next,
+        playersMapObj,
+        tournaments,
+      });
+      return next;
+    });
   };
 
   const handleNotify = async (match: Match, type: MatchNotificationType) => {

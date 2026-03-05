@@ -7,8 +7,9 @@ import Sidebar from "./Sidebar";
 import LanguageSelector from "./LanguageSelector";
 import { Toaster } from "react-hot-toast";
 import toast from "react-hot-toast";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useTranslation } from "../i18n";
+import { supabase } from "../lib/supabase";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -18,13 +19,6 @@ const ACTIVITY_WRITE_THROTTLE_MS = 30 * 1000; // 30 seconds
 const SESSION_STARTED_AT_KEY = "padelx.sessionStartedAt";
 const SESSION_LAST_ACTIVITY_AT_KEY = "padelx.sessionLastActivityAt";
 const SESSION_USER_ID_KEY = "padelx.sessionUserId";
-
-function getSupabaseClient() {
-  // Importante: NO crear el cliente si faltan envs.
-  // Esto evita que falle el prerender/build (por ejemplo en /_not-found).
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-}
 
 function buildCleanUrl(pathname: string, params: URLSearchParams) {
   const qs = params.toString();
@@ -76,16 +70,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
 
     const checkSession = async () => {
-      if (!supabaseRef.current) {
-        supabaseRef.current = getSupabaseClient();
-      }
-
       // Si falta configuración de Supabase, no rompemos el build ni el runtime.
       // Redirigimos al login para evitar pantallas en blanco.
-      if (!supabaseRef.current) {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
         setCheckingSession(false);
         router.replace("/login?error=config_supabase");
         return;
+      }
+      if (!supabaseRef.current) {
+        supabaseRef.current = supabase;
       }
 
       const {
@@ -141,7 +134,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const checkTimeout = async () => {
       if (!active) return;
       if (!supabaseRef.current) {
-        supabaseRef.current = getSupabaseClient();
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+        supabaseRef.current = supabase;
       }
       if (!supabaseRef.current) return;
 

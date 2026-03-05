@@ -12,12 +12,19 @@ type RankedPlayer = {
   id: number;
   name: string;
   avatar_url: string | null;
+  level?: number | null;
   wins: number;
   losses: number;
   played: number;
   games_for: number;
   games_against: number;
   points: number;
+};
+
+type TopLevelPlayer = {
+  id: number;
+  name: string;
+  level: number | null;
 };
 
 type ScopeMode = "general" | "tournament";
@@ -107,6 +114,7 @@ function getFormBadge(player: RankedPlayer) {
 
 export default function RankingPage() {
   const [players, setPlayers] = useState<RankedPlayer[]>([]);
+  const [topLevelPlayers, setTopLevelPlayers] = useState<TopLevelPlayer[]>([]);
   const [matchCount, setMatchCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tableSearch, setTableSearch] = useState("");
@@ -146,6 +154,20 @@ export default function RankingPage() {
       setLoading(true);
     }
     try {
+      const { data: topByLevelData, error: topByLevelError } = await supabase
+        .from("players")
+        .select("id, name, level")
+        .eq("is_approved", true)
+        .order("level", { ascending: false, nullsFirst: false })
+        .order("name", { ascending: true })
+        .limit(10);
+
+      if (topByLevelError) {
+        console.error("Error cargando top 10 por nivel:", topByLevelError);
+      } else {
+        setTopLevelPlayers((topByLevelData || []) as TopLevelPlayer[]);
+      }
+
       let availableTournaments = tournaments;
       if (!tournamentsLoaded) {
         const { data: tournamentData, error: tournamentError } = await supabase
@@ -344,7 +366,7 @@ export default function RankingPage() {
 
       const { data: playerData, error: playerError } = await supabase
         .from("players")
-        .select("id, name, avatar_url")
+        .select("id, name, avatar_url, level")
         .eq("is_approved", true)
         .in("id", activePlayerIds);
 
@@ -363,6 +385,7 @@ export default function RankingPage() {
             id: player.id,
             name: player.name,
             avatar_url: player.avatar_url,
+            level: player.level,
             wins: stats.wins,
             losses: stats.losses,
             played: stats.played,
@@ -505,6 +528,24 @@ export default function RankingPage() {
     if (!term) return players;
     return players.filter((player) => player.name.toLowerCase().includes(term));
   }, [players, tableSearch]);
+
+  const displayTop10 = topLevelPlayers.length > 0
+    ? topLevelPlayers
+    : players
+        .map((player) => ({
+          id: player.id,
+          name: player.name,
+          level: player.level ?? null,
+        }))
+        .filter((player) => player.level !== null)
+        .sort((a, b) => (Number(b.level) || 0) - (Number(a.level) || 0))
+        .slice(0, 10);
+
+  const formatLevel = (level: number | null) => {
+    if (level === null || Number.isNaN(Number(level))) return "-";
+    const numeric = Number(level);
+    return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(1);
+  };
 
   const positionByPlayerId = useMemo(() => {
     const positions: Record<number, number> = {};
@@ -654,13 +695,48 @@ export default function RankingPage() {
           <Card className="text-center text-gray-500">
             <p className="animate-pulse">Cargando ranking...</p>
           </Card>
-        ) : players.length === 0 ? (
+        ) : isGeneralView && displayTop10.length === 0 ? (
           <Card className="text-center text-gray-500">
             <p>
               {isGeneralView
                 ? "No hay jugadores con puntos todavía. Registrá algunos partidos."
                 : "No hay jugadores con puntos en ese torneo. Registrá algunos partidos."}
             </p>
+          </Card>
+        ) : isGeneralView ? (
+          <Card className="!p-0 overflow-hidden">
+            <div className="px-6 pt-6 pb-2">
+              <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+                🏆 Top 10 Jugadores
+              </h2>
+            </div>
+            <div className="px-6 pb-6 pt-1">
+              <div className="border-b border-slate-300 py-2 mb-1 flex items-center justify-between">
+                <span className="text-sm md:text-lg font-semibold text-slate-900 uppercase tracking-wide">
+                  Jugador
+                </span>
+                <span className="text-sm md:text-lg font-semibold text-slate-900 uppercase tracking-wide">
+                  Nivel
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {displayTop10.map((player, index) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    onClick={() => handleRowClick(player.id)}
+                    className="w-full border-b border-slate-300 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                  >
+                    <span className="text-lg md:text-[2rem] leading-tight font-medium text-slate-900">
+                      #{index + 1} {player.name}
+                    </span>
+                    <span className="inline-flex items-center rounded-lg bg-indigo-100 px-3 py-1 text-lg md:text-3xl font-bold text-indigo-700">
+                      {formatLevel(player.level)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </Card>
         ) : (
           <>

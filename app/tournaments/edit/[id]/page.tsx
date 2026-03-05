@@ -220,7 +220,8 @@ export default function EditTournament() {
     }
 
     const normalizedStatus = String(formData.status || "").toLowerCase();
-    const mustHaveEndDate = normalizedStatus === "finalizado";
+    const mustHaveEndDate =
+      normalizedStatus === "finalizado" || normalizedStatus === "finished";
     const normalizedEndDate = formData.end_date ? formData.end_date : null;
 
     if (mustHaveEndDate && !normalizedEndDate) {
@@ -233,7 +234,9 @@ export default function EditTournament() {
       name: formData.name,
       category: formData.category,
       start_date: formData.start_date || null,
-      end_date: mustHaveEndDate ? normalizedEndDate : null,
+      // Guardamos la fecha de finalizacion siempre que el usuario la complete.
+      // Si el estado es finalizado, ademas pasa a ser obligatoria.
+      end_date: normalizedEndDate,
       status: formData.status,
     };
 

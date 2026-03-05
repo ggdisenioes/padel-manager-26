@@ -8,7 +8,6 @@ import Link from "next/link";
 import { useRole } from "../../../hooks/useRole";
 import MatchCard from "../../../components/matches/MatchCard";
 import toast from "react-hot-toast";
-import MatchShareCard from "../../../components/matches/MatchShareCard";
 
 type TournamentRound = {
   id: number;
@@ -517,6 +516,24 @@ export default function EditTournament() {
     return { winnerTeam: teamA, loserTeam: teamB, score };
   };
 
+  const formatShareDate = (iso: string | null | undefined) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" });
+  };
+
+  const formatShareTime = (iso: string | null | undefined) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("es-ES", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Madrid",
+    });
+  };
+
   return (
     <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20">
       {loading ? (
@@ -817,170 +834,213 @@ export default function EditTournament() {
         </Card>
       )}
 
-      {/* Render oculto para generar imagen (Instagram 1:1) */}
-      <div style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", opacity: 0 }}>
-        {openResultMatch && isPlayed(openResultMatch) && (
-          <div ref={shareCardRef}>
-            {(() => {
-              const t = getWinnerLoserTeams(openResultMatch);
-              return (
-                <MatchShareCard
-                  winnerTeam={t.winnerTeam}
-                  loserTeam={t.loserTeam}
-                  score={t.score}
-                />
-              );
-            })()}
-          </div>
-        )}
-      </div>
+      {openResultMatch && isPlayed(openResultMatch) && (() => {
+        const m = openResultMatch;
+        const { winnerTeam, loserTeam, score } = getWinnerLoserTeams(m);
+        const matchType = m.tournament_id
+          ? (formData.name || `Torneo #${idNumber}`)
+          : "Partido amistoso";
+        const dateStr = formatShareDate(m.start_time);
+        const timeStr = formatShareTime(m.start_time);
+        const courtPlace = [m.court, m.place].filter(Boolean).join(" · ");
 
-      {openResultMatch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-[#0F172A] w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 relative text-white">
-            <button
-              onClick={() => setOpenResultMatch(null)}
-              className="absolute top-3 right-3 text-white/60 hover:text-white"
-            >
-              ✕
-            </button>
-
-            {/* LOGO */}
-            <div className="flex flex-col items-center gap-1">
-              <img
-                src="/logo.svg"
-                alt="DEMO Padel Manager"
-                className="h-8 w-auto object-contain"
-              />
-              <span className="text-xs tracking-widest text-green-400">
-                PADEL MANAGER
-              </span>
-            </div>
-
-            {/* RESULT */}
-            <div className="text-center space-y-2 mt-4">
-              {isPlayed(openResultMatch) ? (
-                <>
-                  <p className="text-lg font-semibold">
-                    {openResultMatch.winner === "A"
-                      ? buildTeamName(openResultMatch.player_1_a, openResultMatch.player_2_a)
-                      : buildTeamName(openResultMatch.player_1_b, openResultMatch.player_2_b)}
-                  </p>
-
-                  <p className="text-5xl font-extrabold my-2">
-                    {formatScoreForDisplay(openResultMatch.score)}
-                  </p>
-
-                  <p className="text-sm text-white/70">
-                    {openResultMatch.winner === "A"
-                      ? buildTeamName(openResultMatch.player_1_b, openResultMatch.player_2_b)
-                      : buildTeamName(openResultMatch.player_1_a, openResultMatch.player_2_a)}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-white/60">Resultado todavía no cargado</p>
-              )}
-            </div>
-
-            {/* BOTONES PRO */}
-            <div className="space-y-2">
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 relative shadow-2xl">
               <button
-                disabled={!isPlayed(openResultMatch)}
-                onClick={async () => {
-                  if (!isPlayed(openResultMatch)) return;
-                  if (!shareCardRef.current) {
-                    toast.error("No se pudo generar la imagen");
-                    return;
-                  }
+                onClick={() => setOpenResultMatch(null)}
+                className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl"
+              >
+                ✕
+              </button>
 
-                  try {
-                    const { toPng } = await import("html-to-image");
-                    const dataUrl = await toPng(shareCardRef.current, {
-                      cacheBust: true,
-                      pixelRatio: 2,
-                      backgroundColor: "#020617",
-                    });
+              <div style={{ overflow: "hidden", borderRadius: 16 }}>
+                <div
+                  ref={shareCardRef}
+                  style={{
+                    width: 480,
+                    height: 520,
+                    backgroundColor: "#0b1220",
+                    borderRadius: 0,
+                    padding: "28px 32px",
+                    color: "#fff",
+                    fontFamily: "system-ui, -apple-system, sans-serif",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    transform: "scale(0.82)",
+                    transformOrigin: "top left",
+                    marginBottom: -90,
+                  }}
+                >
+                  <div style={{ textAlign: "center" }}>
+                    <img
+                      src="/logo.svg"
+                      alt="PADELX"
+                      style={{
+                        height: 44,
+                        width: "auto",
+                        margin: "0 auto",
+                        objectFit: "contain",
+                      }}
+                    />
+                  </div>
 
-                    const res = await fetch(dataUrl);
-                    const blob = await res.blob();
-                    const file = new File([blob], "resultado-twinco.png", { type: "image/png" });
+                  <div style={{ textAlign: "center", marginTop: 14 }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        backgroundColor: m.tournament_id ? "#1a3a2a" : "#1a2a3a",
+                        color: m.tournament_id ? "#4ade80" : "#60a5fa",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "5px 16px",
+                        borderRadius: 20,
+                        letterSpacing: 1,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {matchType}
+                    </span>
+                  </div>
 
-                    if (navigator.share) {
-                      try {
-                        await navigator.share({
-                          files: [file],
-                          title: "Resultado del partido",
-                          text: "Resultado DEMO Padel Manager",
-                        });
-                        toast.success("¡Imagen compartida!");
-                        return;
-                      } catch (err: any) {
-                        if (err?.name === "AbortError" || err?.message === "Share canceled") return;
-                      }
+                  <div
+                    style={{
+                      textAlign: "center",
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: "#4ade80",
+                          letterSpacing: 3,
+                          marginBottom: 6,
+                        }}
+                      >
+                        GANADORES
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: "#ffffff" }}>
+                        {winnerTeam}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 56,
+                        fontWeight: 900,
+                        letterSpacing: 4,
+                        color: "#ccff00",
+                        margin: "8px 0",
+                      }}
+                    >
+                      {score}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: "#666",
+                          letterSpacing: 3,
+                          marginBottom: 6,
+                        }}
+                      >
+                        PERDEDORES
+                      </div>
+                      <div style={{ fontSize: 16, color: "#999" }}>
+                        {loserTeam}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ height: 1, backgroundColor: "#1e293b", marginBottom: 12 }} />
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        gap: 16,
+                        fontSize: 11,
+                        color: "#64748b",
+                      }}
+                    >
+                      {dateStr && <span>{dateStr}</span>}
+                      {timeStr && <span>{timeStr}h</span>}
+                      {courtPlace && <span>{courtPlace}</span>}
+                    </div>
+                    <div
+                      style={{
+                        textAlign: "center",
+                        marginTop: 10,
+                        fontSize: 10,
+                        color: "#334155",
+                      }}
+                    >
+                      {process.env.NEXT_PUBLIC_APP_URL?.replace(/^https?:\/\//, "") || "padelx.es"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    const el = shareCardRef.current;
+                    if (!el) {
+                      toast.error("No se pudo generar la imagen");
+                      return;
                     }
 
-                    const a = document.createElement("a");
-                    a.href = dataUrl;
-                    a.download = "resultado-twinco.png";
-                    a.click();
-                    toast.success("Imagen descargada");
-                  } catch (err) {
-                    console.error(err);
-                    toast.error("No se pudo generar la imagen");
-                  }
-                }}
-                className={`w-full mt-2 py-2 rounded-xl font-semibold transition ${
-                  isPlayed(openResultMatch)
-                    ? "bg-green-600 hover:bg-green-700 text-white"
-                    : "bg-white/10 text-white/40 cursor-not-allowed"
-                }`}
-              >
-                Compartir imagen
-              </button>
+                    const origTransform = el.style.transform;
+                    const origMargin = el.style.marginBottom;
+                    el.style.transform = "none";
+                    el.style.marginBottom = "0";
+
+                    try {
+                      const { toPng } = await import("html-to-image");
+                      const dataUrl = await toPng(el, {
+                        cacheBust: true,
+                        pixelRatio: 2,
+                        width: 480,
+                        height: 520,
+                      });
+                      const link = document.createElement("a");
+                      link.download = `resultado_partido_${m.id}.png`;
+                      link.href = dataUrl;
+                      link.click();
+                      toast.success("Imagen descargada");
+                    } catch (err) {
+                      console.error("toPng error:", err);
+                      toast.error("No se pudo generar la imagen");
+                    } finally {
+                      el.style.transform = origTransform;
+                      el.style.marginBottom = origMargin;
+                    }
+                  }}
+                  className="flex-1 bg-gray-900 text-white py-2.5 rounded-xl font-semibold hover:bg-black transition text-sm"
+                >
+                  Descargar imagen
+                </button>
+              </div>
 
               <button
-                disabled={!isPlayed(openResultMatch)}
-                onClick={async () => {
-                  if (!isPlayed(openResultMatch)) return;
-                  if (!shareCardRef.current) {
-                    toast.error("No se pudo generar la imagen");
-                    return;
-                  }
-
-                  try {
-                    const { toPng } = await import("html-to-image");
-                    const dataUrl = await toPng(shareCardRef.current, {
-                      cacheBust: true,
-                      pixelRatio: 2,
-                      backgroundColor: "#020617",
-                    });
-
-                    const a = document.createElement("a");
-                    a.href = dataUrl;
-                    a.download = "resultado-twinco.png";
-                    a.click();
-                    toast.success("Imagen descargada");
-                  } catch (err) {
-                    console.error(err);
-                    toast.error("No se pudo generar la imagen");
-                  }
-                }}
-                className={`w-full py-2 rounded-xl font-semibold transition ${
-                  isPlayed(openResultMatch)
-                    ? "bg-white/10 hover:bg-white/20 text-white"
-                    : "bg-white/5 text-white/30 cursor-not-allowed"
-                }`}
+                onClick={() => setOpenResultMatch(null)}
+                className="w-full border border-gray-200 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition"
               >
-                Descargar imagen
+                Cerrar
               </button>
-
-              <p className="text-center text-xs text-white/60">
-                Ideal para WhatsApp e Instagram.
-              </p>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </main>
   );
 }

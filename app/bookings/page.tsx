@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Card from "../components/Card";
 import toast from "react-hot-toast";
 import { useTranslation } from "../i18n";
+import { getClientCache, setClientCache } from "../lib/clientCache";
 
 type Court = {
   id: number;
@@ -20,6 +21,16 @@ type Booking = {
   end_time: string;
   status: string;
 };
+
+type BookingsCachePayload = {
+  courts: Court[];
+  bookings: Booking[];
+  selectedDate: string;
+  selectedCourt: string;
+};
+
+const BOOKINGS_CACHE_KEY = "padelx:bookings:v1";
+const BOOKINGS_CACHE_TTL_MS = 90 * 1000;
 
 export default function BookingsPage() {
   const router = useRouter();
@@ -41,11 +52,46 @@ export default function BookingsPage() {
     notes: "",
   });
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  const fetchBookings = useCallback(async (background = false, dateOverride?: string, courtOverride?: string) => {
+    const date = dateOverride ?? selectedDate;
+    const court = courtOverride ?? selectedCourt;
+    if (!background) setLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
 
-  const checkAuth = async () => {
+      if (sessionData?.session?.access_token) {
+        headers["Authorization"] = `Bearer ${sessionData.session.access_token}`;
+      }
+
+      const response = await fetch(
+        `/api/bookings?date=${date}&court_id=${court || ""}`,
+        { headers }
+      );
+      const result = await response.json();
+
+      if (response.ok) {
+        const nextBookings = (result.bookings || []) as Booking[];
+        setBookings(nextBookings);
+        setClientCache<BookingsCachePayload>(BOOKINGS_CACHE_KEY, {
+          courts,
+          bookings: nextBookings,
+          selectedDate: date,
+          selectedCourt: court,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching bookings:", error);
+      toast.error(t("bookings.errorLoading"));
+    } finally {
+      if (!background) setLoading(false);
+    }
+  }, [selectedDate, selectedCourt, courts, t]);
+
+  const checkAuth = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.push("/login");
@@ -61,45 +107,44 @@ export default function BookingsPage() {
       .order("name");
 
     if (courtsData && courtsData.length > 0) {
+      const firstCourt = courtsData[0].id.toString();
       setCourts(courtsData);
-      setSelectedCourt(courtsData[0].id.toString());
-      setFormData({ ...formData, court_id: courtsData[0].id.toString() });
+      setSelectedCourt((prev) => prev || firstCourt);
+      setFormData((prev) => ({
+        ...prev,
+        court_id: prev.court_id || firstCourt,
+      }));
+      await fetchBookings(true, selectedDate, selectedCourt || firstCourt);
+    } else {
+      setCourts([]);
+      setBookings([]);
     }
-
-    fetchBookings();
-  };
-
-  const fetchBookings = async () => {
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      if (sessionData?.session?.access_token) {
-        headers["Authorization"] = `Bearer ${sessionData.session.access_token}`;
-      }
-
-      const response = await fetch(
-        `/api/bookings?date=${selectedDate}&court_id=${selectedCourt || ""}`,
-        { headers }
-      );
-      const result = await response.json();
-
-      if (response.ok) {
-        setBookings(result.bookings || []);
-      }
-    } catch (error) {
-      console.error("Error fetching bookings:", error);
-      toast.error(t("bookings.errorLoading"));
-    } finally {
+    if (!background) {
       setLoading(false);
     }
-  };
+  }, [fetchBookings, router, selectedCourt, selectedDate]);
 
   useEffect(() => {
-    fetchBookings();
-  }, [selectedDate, selectedCourt]);
+    const cached = getClientCache<BookingsCachePayload>(BOOKINGS_CACHE_KEY, BOOKINGS_CACHE_TTL_MS);
+    if (cached) {
+      setCourts(cached.courts || []);
+      setBookings(cached.bookings || []);
+      if (cached.selectedDate) setSelectedDate(cached.selectedDate);
+      if (cached.selectedCourt) setSelectedCourt(cached.selectedCourt);
+      setFormData((prev) => ({
+        ...prev,
+        booking_date: cached.selectedDate || prev.booking_date,
+        court_id: cached.selectedCourt || prev.court_id,
+      }));
+      setLoading(false);
+    }
+
+    void checkAuth(Boolean(cached));
+  }, [checkAuth]);
+
+  useEffect(() => {
+    void fetchBookings(true);
+  }, [selectedDate, selectedCourt, fetchBookings]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,7 +186,7 @@ export default function BookingsPage() {
           notes: "",
         });
         setShowForm(false);
-        fetchBookings();
+        void fetchBookings(true);
       } else {
         const result = await response.json();
         toast.error(result.error || t("bookings.errorCreating"));
@@ -164,10 +209,6 @@ export default function BookingsPage() {
       return b.court_id === courtId && time >= bookingStart && time < bookingEnd;
     });
   };
-
-  if (loading) {
-    return <div className="p-8 text-center">{t("bookings.loading")}</div>;
-  }
 
   return (
     <main className="max-w-5xl mx-auto p-6 space-y-6">
@@ -296,7 +337,15 @@ export default function BookingsPage() {
           </div>
         </div>
 
-        {bookings.length > 0 ? (
+        {loading && bookings.length === 0 ? (
+          <Card className="p-6">
+            <div className="animate-pulse space-y-3">
+              <div className="h-5 w-1/3 rounded bg-gray-200" />
+              <div className="h-12 rounded bg-gray-100" />
+              <div className="h-12 rounded bg-gray-100" />
+            </div>
+          </Card>
+        ) : bookings.length > 0 ? (
           <Card className="p-6 overflow-x-auto">
             <div className="space-y-3">
               {bookings.map((booking) => (

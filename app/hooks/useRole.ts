@@ -21,6 +21,18 @@ type TokenClaims = {
   };
 };
 
+type RoleCachePayload = {
+  ts: number;
+  role: UserRole;
+  userId: string;
+};
+
+const ROLE_CACHE_KEY = "padelx:role-cache:v1";
+const ROLE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const SESSION_USER_ID_KEY = "padelx.sessionUserId";
+
+let inMemoryRoleCache: RoleCachePayload | null = null;
+
 function decodeJwtPayload<T = unknown>(token: string): T | null {
   try {
     const parts = token.split(".");
@@ -49,9 +61,67 @@ function normalizeRole(value: unknown): UserRole | null {
   return null;
 }
 
+function readRoleCache(): RoleCachePayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    if (inMemoryRoleCache) {
+      if (Date.now() - inMemoryRoleCache.ts <= ROLE_CACHE_TTL_MS) {
+        return inMemoryRoleCache;
+      }
+      inMemoryRoleCache = null;
+    }
+
+    const raw = window.sessionStorage.getItem(ROLE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RoleCachePayload;
+    if (!parsed || typeof parsed.ts !== "number" || typeof parsed.role !== "string") {
+      return null;
+    }
+    if (Date.now() - parsed.ts > ROLE_CACHE_TTL_MS) {
+      return null;
+    }
+
+    const sessionUserId = window.localStorage.getItem(SESSION_USER_ID_KEY);
+    if (sessionUserId && parsed.userId && sessionUserId !== parsed.userId) {
+      return null;
+    }
+
+    inMemoryRoleCache = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeRoleCache(role: UserRole, userId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: RoleCachePayload = {
+      ts: Date.now(),
+      role,
+      userId,
+    };
+    inMemoryRoleCache = payload;
+    window.sessionStorage.setItem(ROLE_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // no-op
+  }
+}
+
+function clearRoleCache() {
+  inMemoryRoleCache = null;
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(ROLE_CACHE_KEY);
+  } catch {
+    // no-op
+  }
+}
+
 export function useRole() {
-  const [role, setRole] = useState<UserRole>("user");
-  const [loading, setLoading] = useState(true);
+  const initialCache = readRoleCache();
+  const [role, setRole] = useState<UserRole>(initialCache?.role || "user");
+  const [loading, setLoading] = useState(!initialCache);
 
   useEffect(() => {
     let active = true;
@@ -66,6 +136,7 @@ export function useRole() {
             setRole("user");
             setLoading(false);
           }
+          clearRoleCache();
           if (!lateRetryScheduled) {
             lateRetryScheduled = true;
             setTimeout(() => {
@@ -105,7 +176,11 @@ export function useRole() {
 
         const normalizedTokenRole = normalizeRole(roleFromToken);
         if (normalizedTokenRole && normalizedTokenRole !== "user") {
-          if (active) setRole(normalizedTokenRole);
+          if (active) {
+            setRole(normalizedTokenRole);
+            setLoading(false);
+          }
+          writeRoleCache(normalizedTokenRole, session.user.id);
           // Si el token ya trae privilegios, no hace falta pegarle a la DB.
           return;
         }
@@ -121,7 +196,12 @@ export function useRole() {
 
         if (error || !data) {
           console.warn("[useRole] failed to fetch role from profiles", error);
-          if (active) setRole(normalizedTokenRole || "user");
+          if (active) {
+            const nextRole = normalizedTokenRole || "user";
+            setRole(nextRole);
+            setLoading(false);
+            writeRoleCache(nextRole, userId);
+          }
           return;
         }
 
@@ -138,14 +218,26 @@ export function useRole() {
 
         const normalizedDbRole = normalizeRole(data.role);
         if (normalizedDbRole) {
-          if (active) setRole(normalizedDbRole);
+          if (active) {
+            setRole(normalizedDbRole);
+            setLoading(false);
+          }
+          writeRoleCache(normalizedDbRole, userId);
         } else {
           console.warn("[useRole] invalid role value", data.role);
-          if (active) setRole(normalizedTokenRole || "user");
+          if (active) {
+            const nextRole = normalizedTokenRole || "user";
+            setRole(nextRole);
+            setLoading(false);
+            writeRoleCache(nextRole, userId);
+          }
         }
       } catch (err) {
         console.error("[useRole] unexpected error:", err);
-        if (active) setRole("user");
+        if (active) {
+          setRole("user");
+          setLoading(false);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -154,6 +246,9 @@ export function useRole() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        clearRoleCache();
+      }
       if (
         event === "INITIAL_SESSION" ||
         event === "SIGNED_IN" ||

@@ -300,14 +300,6 @@ export default function PlayersPage() {
   const approvedPlayers = activePlayers.filter((p) => Boolean(p.is_approved));
   const pendingPlayers = activePlayers.filter((p) => !Boolean(p.is_approved));
 
-  if (roleLoading) {
-    return (
-      <main className="flex-1 p-8">
-        <p className="text-gray-500 animate-pulse">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
   return (
     <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">

@@ -763,7 +763,21 @@ export default function MiCuentaPage() {
   );
 
   if (loading) {
-    return <p className="p-8 text-gray-500 animate-pulse">Cargando tu perfil…</p>;
+    return (
+      <main className="max-w-6xl mx-auto p-6 md:p-10 space-y-6">
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 w-64 rounded bg-gray-200" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="h-20 rounded-xl bg-gray-100" />
+              <div className="h-20 rounded-xl bg-gray-100" />
+              <div className="h-20 rounded-xl bg-gray-100" />
+            </div>
+            <div className="h-24 rounded-xl bg-gray-100" />
+          </div>
+        </section>
+      </main>
+    );
   }
 
   if (notLinked && staffAccount) {

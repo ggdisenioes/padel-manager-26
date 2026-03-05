@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Card from "../components/Card";
 import toast from "react-hot-toast";
 import { useTranslation } from "../i18n";
 import { useRole } from "../hooks/useRole";
+import { getClientCache, setClientCache } from "../lib/clientCache";
 
 type Challenge = {
   id: number;
@@ -36,10 +37,20 @@ type Court = {
   name: string;
 };
 
+type ChallengesCachePayload = {
+  challenges: Challenge[];
+  players: Player[];
+  courts: Court[];
+  myPlayerId: number | null;
+};
+
+const CHALLENGES_CACHE_KEY = "padelx:challenges:v1";
+const CHALLENGES_CACHE_TTL_MS = 90 * 1000;
+
 export default function ChallengesPage() {
   const router = useRouter();
   const { t, locale } = useTranslation();
-  const { isAdmin, isManager, loading: roleLoading } = useRole();
+  const { isAdmin, isManager } = useRole();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [courts, setCourts] = useState<Court[]>([]);
@@ -57,49 +68,7 @@ export default function ChallengesPage() {
   const [showSchedule, setShowSchedule] = useState<Record<number, boolean>>({});
   const dateLocale = locale === "en" ? "en-US" : "es-ES";
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    // Get my linked player
-    const { data: myPlayer } = await supabase
-      .from("players")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (myPlayer) {
-      setMyPlayerId(myPlayer.id);
-    }
-
-    // Get all approved players
-    const { data: allPlayers } = await supabase
-      .from("players")
-      .select("id, name")
-      .eq("is_approved", true)
-      .order("name");
-
-    setPlayers(allPlayers || []);
-
-    // Get courts
-    const { data: allCourts } = await supabase
-      .from("courts")
-      .select("id, name")
-      .order("name");
-
-    setCourts(allCourts || []);
-
-    fetchChallenges();
-  };
-
-  const fetchChallenges = async () => {
+  const fetchChallenges = useCallback(async () => {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const headers: Record<string, string> = {
@@ -114,15 +83,80 @@ export default function ChallengesPage() {
       const result = await response.json();
 
       if (response.ok) {
-        setChallenges(result.challenges || []);
+        return (result.challenges || []) as Challenge[];
       }
     } catch (error) {
       console.error("Error fetching challenges:", error);
       toast.error(t("challenges.errorLoading"));
+    }
+    return null;
+  }, [t]);
+
+  const checkAuth = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const [myPlayerRes, playersRes, courtsRes, challengesRes] = await Promise.all([
+        supabase
+          .from("players")
+          .select("id")
+          .eq("user_id", user.id)
+          .single(),
+        supabase
+          .from("players")
+          .select("id, name")
+          .eq("is_approved", true)
+          .order("name"),
+        supabase
+          .from("courts")
+          .select("id, name")
+          .order("name"),
+        fetchChallenges(),
+      ]);
+
+      const nextMyPlayerId = myPlayerRes.data?.id ?? null;
+      const nextPlayers = (playersRes.data || []) as Player[];
+      const nextCourts = (courtsRes.data || []) as Court[];
+      const nextChallenges = Array.isArray(challengesRes) ? challengesRes : [];
+
+      setMyPlayerId(nextMyPlayerId);
+      setPlayers(nextPlayers);
+      setCourts(nextCourts);
+      setChallenges(nextChallenges);
+      setClientCache<ChallengesCachePayload>(CHALLENGES_CACHE_KEY, {
+        myPlayerId: nextMyPlayerId,
+        players: nextPlayers,
+        courts: nextCourts,
+        challenges: nextChallenges,
+      });
     } finally {
+      if (!background) {
+        setLoading(false);
+      }
+    }
+  }, [fetchChallenges, router]);
+
+  useEffect(() => {
+    const cached = getClientCache<ChallengesCachePayload>(
+      CHALLENGES_CACHE_KEY,
+      CHALLENGES_CACHE_TTL_MS
+    );
+
+    if (cached) {
+      setMyPlayerId(cached.myPlayerId ?? null);
+      setPlayers(cached.players || []);
+      setCourts(cached.courts || []);
+      setChallenges(cached.challenges || []);
       setLoading(false);
     }
-  };
+
+    void checkAuth(Boolean(cached));
+  }, [checkAuth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +192,7 @@ export default function ChallengesPage() {
         toast.success(t("challenges.created"));
         setFormData({ challenger_id: "", challenger_partner_id: "", challenged_id: "", challenged_partner_id: "", message: "" });
         setShowForm(false);
-        fetchChallenges();
+        void checkAuth(true);
       } else {
         const result = await response.json();
         toast.error(result.error || t("challenges.errorCreating"));
@@ -186,7 +220,7 @@ export default function ChallengesPage() {
 
       if (res.ok) {
         toast.success(response === "accept" ? t("challenges.accepted") : t("challenges.rejected"));
-        fetchChallenges();
+        void checkAuth(true);
       } else {
         const result = await res.json();
         toast.error(result.error || t("challenges.errorResponding"));
@@ -226,7 +260,7 @@ export default function ChallengesPage() {
       if (res.ok) {
         toast.success(t("challenges.proposalSent"));
         setShowSchedule((prev) => ({ ...prev, [challengeId]: false }));
-        fetchChallenges();
+        void checkAuth(true);
       } else {
         const result = await res.json();
         toast.error(result.error || t("challenges.errorSendingProposal"));
@@ -261,7 +295,7 @@ export default function ChallengesPage() {
 
       if (response.ok) {
         toast.success(t("challenges.deleted"));
-        fetchChallenges();
+        void checkAuth(true);
         return;
       }
 
@@ -310,10 +344,6 @@ export default function ChallengesPage() {
     if (accepted === false) return <span className="text-red-600 font-semibold text-xs">{label}: {t("challenges.rejectLabel")}</span>;
     return <span className="text-yellow-600 font-semibold text-xs">{label}: {t("challenges.statusPending")}</span>;
   };
-
-  if (loading || roleLoading) {
-    return <div className="p-8 text-center">{t("challenges.loading")}</div>;
-  }
 
   const canDeleteChallenges = isAdmin || isManager;
 
@@ -450,7 +480,15 @@ export default function ChallengesPage() {
       )}
 
       <div className="space-y-3">
-        {challenges.length === 0 ? (
+        {loading && challenges.length === 0 ? (
+          <Card className="p-5">
+            <div className="animate-pulse space-y-3">
+              <div className="h-5 w-2/5 rounded bg-gray-200" />
+              <div className="h-4 w-4/5 rounded bg-gray-100" />
+              <div className="h-4 w-3/5 rounded bg-gray-100" />
+            </div>
+          </Card>
+        ) : challenges.length === 0 ? (
           <Card className="p-4 text-center text-gray-500">
             {t("challenges.emptyCta")}
           </Card>

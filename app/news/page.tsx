@@ -9,6 +9,7 @@ import { useRole } from "../hooks/useRole";
 import { supabase } from "../lib/supabase";
 import { useTranslation } from "../i18n";
 import { resolveNewsText } from "@/lib/newsPayload";
+import { getClientCache, setClientCache } from "../lib/clientCache";
 
 type News = {
   id: number;
@@ -21,6 +22,13 @@ type News = {
   created_at: string;
 };
 
+type NewsCachePayload = {
+  news: News[];
+};
+
+const NEWS_CACHE_KEY = "padelx:news:v1";
+const NEWS_CACHE_TTL_MS = 90 * 1000;
+
 export default function NewsPage() {
   const router = useRouter();
   const { t, locale } = useTranslation();
@@ -31,6 +39,12 @@ export default function NewsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
+    const cached = getClientCache<NewsCachePayload>(NEWS_CACHE_KEY, NEWS_CACHE_TTL_MS);
+    if (cached) {
+      setNews(cached.news || []);
+      setLoading(false);
+    }
+
     const run = async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
@@ -47,7 +61,9 @@ export default function NewsPage() {
         const result = await response.json();
 
         if (response.ok) {
-          setNews(result.news || []);
+          const nextNews = (result.news || []) as News[];
+          setNews(nextNews);
+          setClientCache<NewsCachePayload>(NEWS_CACHE_KEY, { news: nextNews });
           return;
         }
         toast.error(result.error || t("news.errorLoading"));
@@ -60,7 +76,7 @@ export default function NewsPage() {
     };
 
     void run();
-  }, []);
+  }, [t]);
 
   const handleDelete = async (newsId: number) => {
     if (!canManageNews) return;
@@ -98,10 +114,6 @@ export default function NewsPage() {
     }
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-gray-500">{t("news.loading")}</div>;
-  }
-
   return (
     <main className="max-w-4xl mx-auto p-6 space-y-6">
       <div className="flex flex-wrap justify-between items-center gap-3">
@@ -116,7 +128,15 @@ export default function NewsPage() {
         )}
       </div>
 
-      {news.length === 0 ? (
+      {loading && news.length === 0 ? (
+        <Card className="p-6">
+          <div className="animate-pulse space-y-3">
+            <div className="h-5 w-1/3 rounded bg-gray-200" />
+            <div className="h-4 w-full rounded bg-gray-100" />
+            <div className="h-4 w-5/6 rounded bg-gray-100" />
+          </div>
+        </Card>
+      ) : news.length === 0 ? (
         <Card className="p-8 text-center">
           <p className="text-gray-500">{t("news.empty")}</p>
         </Card>

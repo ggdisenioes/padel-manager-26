@@ -705,17 +705,17 @@ export default function RankingPage() {
           </Card>
         ) : isGeneralView ? (
           <Card className="!p-0 overflow-hidden">
-            <div className="px-6 pt-6 pb-2">
-              <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+            <div className="px-4 md:px-6 pt-4 md:pt-5 pb-1">
+              <h2 className="text-2xl md:text-[1.75rem] font-bold text-slate-900 tracking-tight">
                 🏆 Top 10 Jugadores
               </h2>
             </div>
-            <div className="px-6 pb-6 pt-1">
-              <div className="border-b border-slate-300 py-2 mb-1 flex items-center justify-between">
-                <span className="text-sm md:text-lg font-semibold text-slate-900 uppercase tracking-wide">
+            <div className="px-4 md:px-6 pb-4 md:pb-5 pt-1">
+              <div className="border-b border-slate-300 py-1.5 mb-1 flex items-center justify-between">
+                <span className="text-xs md:text-sm font-semibold text-slate-900 uppercase tracking-wide">
                   Jugador
                 </span>
-                <span className="text-sm md:text-lg font-semibold text-slate-900 uppercase tracking-wide">
+                <span className="text-xs md:text-sm font-semibold text-slate-900 uppercase tracking-wide">
                   Nivel
                 </span>
               </div>
@@ -725,12 +725,12 @@ export default function RankingPage() {
                     key={player.id}
                     type="button"
                     onClick={() => handleRowClick(player.id)}
-                    className="w-full border-b border-slate-300 py-2.5 flex items-center justify-between text-left hover:bg-slate-50 transition"
+                    className="w-full border-b border-slate-300 py-1.5 md:py-2 flex items-center justify-between text-left hover:bg-slate-50 transition"
                   >
-                    <span className="text-lg md:text-[2rem] leading-tight font-medium text-slate-900">
+                    <span className="text-xl md:text-2xl leading-tight font-medium text-slate-900">
                       #{index + 1} {player.name}
                     </span>
-                    <span className="inline-flex items-center rounded-lg bg-indigo-100 px-3 py-1 text-lg md:text-3xl font-bold text-indigo-700">
+                    <span className="inline-flex items-center rounded-lg bg-indigo-100 px-2.5 py-0.5 text-xl md:text-2xl font-bold text-indigo-700">
                       {formatLevel(player.level)}
                     </span>
                   </button>

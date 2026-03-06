@@ -7,6 +7,8 @@ import { useParams, useRouter } from "next/navigation";
 import Card from "../../components/Card";
 import { supabase } from "../../lib/supabase";
 import { formatDateMadrid } from "@/lib/dates";
+import { getClientCache, setClientCache } from "../../lib/clientCache";
+import { waitForSession } from "../../lib/auth-session";
 
 type Player = {
   id: number;
@@ -40,6 +42,57 @@ type HistoryItem = {
   dateLabel: string; // para mostrar
 };
 
+type PlayerStatsCachePayload = {
+  player: Player;
+  stats: { wins: number; losses: number; total: number };
+  history: HistoryItem[];
+};
+
+const PLAYER_STATS_CACHE_KEY_PREFIX = "padelx:player:stats:v1:";
+const PLAYER_STATS_CACHE_TTL_MS = 3 * 60 * 1000;
+const PLAYER_QUERY_TIMEOUT_MS = 10_000;
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error("Timeout loading player stats")), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
+
+function getPlayerFromListCache(playerId: number): Player | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith("padelx:players:list:v1:")) continue;
+
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as {
+        data?: { players?: Array<{ id: number; name: string; level: number | null; avatar_url?: string | null }> };
+      };
+
+      const found = parsed?.data?.players?.find((player) => Number(player.id) === playerId);
+      if (!found) continue;
+
+      return {
+        id: Number(found.id),
+        name: String(found.name || "Jugador"),
+        level: found.level ?? null,
+        avatar_url: found.avatar_url ?? null,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export default function PlayerStatsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -51,6 +104,7 @@ export default function PlayerStatsPage() {
   }, [params]);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
   const [stats, setStats] = useState({ wins: 0, losses: 0, total: 0 });
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -67,122 +121,164 @@ export default function PlayerStatsPage() {
     }
 
     let cancelled = false;
+    const playerStatsCacheKey = `${PLAYER_STATS_CACHE_KEY_PREFIX}${playerId}`;
 
     const load = async () => {
-      setLoading(true);
+      const cached = getClientCache<PlayerStatsCachePayload>(
+        playerStatsCacheKey,
+        PLAYER_STATS_CACHE_TTL_MS
+      );
 
-      // 1) Player (solo aprobados para vista pública)
-      const { data: playerData, error: playerErr } = await supabase
-        .from("players")
-        .select("id,name,level,avatar_url")
-        .eq("id", playerId)
-        .eq("is_approved", true)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (playerErr || !playerData) {
-        // si no existe o no está aprobado, volvemos a lista
-        router.push("/players");
-        return;
+      if (cached) {
+        setPlayer(cached.player);
+        setStats(cached.stats);
+        setHistory(cached.history || []);
+        setLoading(false);
+        setRefreshing(true);
+      } else {
+        const playerFromListCache = getPlayerFromListCache(playerId);
+        if (playerFromListCache) {
+          setPlayer(playerFromListCache);
+          setLoading(false);
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
       }
 
-      setPlayer(playerData);
+      try {
+        await waitForSession(supabase, { retries: 8, delayMs: 140 });
 
-      // 2) Matches del jugador (solo lectura)
-      const { data: matchesData, error: matchesErr } = await supabase
-        .from("matches")
-        .select(
+        const playerRequest = supabase
+          .from("players")
+          .select("id,name,level,avatar_url")
+          .eq("id", playerId)
+          .eq("is_approved", true)
+          .maybeSingle();
+
+        const matchesRequest = supabase
+          .from("matches")
+          .select(
+            `
+            id,
+            score,
+            winner,
+            start_time,
+            player_1_a (id, name),
+            player_2_a (id, name),
+            player_1_b (id, name),
+            player_2_b (id, name)
           `
-          id,
-          score,
-          winner,
-          start_time,
-          player_1_a (id, name),
-          player_2_a (id, name),
-          player_1_b (id, name),
-          player_2_b (id, name)
-        `
-        )
-        .or(
-          `player_1_a.eq.${playerId},player_2_a.eq.${playerId},player_1_b.eq.${playerId},player_2_b.eq.${playerId}`
+          )
+          .or(
+            `player_1_a.eq.${playerId},player_2_a.eq.${playerId},player_1_b.eq.${playerId},player_2_b.eq.${playerId}`
+          )
+          .order("start_time", { ascending: false });
+
+        const [
+          { data: playerData, error: playerErr },
+          { data: matchesData, error: matchesErr },
+        ] = await promiseWithTimeout(
+          Promise.all([playerRequest, matchesRequest]),
+          PLAYER_QUERY_TIMEOUT_MS
         );
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (matchesErr) {
-        console.warn("[PlayerStats] matches error:", matchesErr);
-      }
-
-      const rows = (matchesData ?? []) as unknown as MatchRow[];
-
-      let wins = 0;
-      let losses = 0;
-      const historyData: HistoryItem[] = [];
-
-      for (const match of rows) {
-        // identificar equipo del jugador
-        let team: "A" | "B" | null = null;
-
-        if (match.player_1_a?.id === playerId || match.player_2_a?.id === playerId) {
-          team = "A";
-        } else if (match.player_1_b?.id === playerId || match.player_2_b?.id === playerId) {
-          team = "B";
+        if (playerErr || !playerData) {
+          if (!cached) router.push("/players");
+          return;
         }
 
-        if (!team) continue;
+        setPlayer(playerData);
 
-        const w = match.winner ?? "pending";
-        const isFinal = w !== "pending";
-        const isWin = isFinal ? team === w : false;
-        if (isFinal) {
-          if (isWin) wins++;
-          else losses++;
+        if (matchesErr) {
+          console.warn("[PlayerStats] matches error:", matchesErr);
         }
 
-        // compañero
-        const mate =
-          team === "A"
-            ? (match.player_1_a?.id === playerId ? match.player_2_a?.name : match.player_1_a?.name)
-            : (match.player_1_b?.id === playerId ? match.player_2_b?.name : match.player_1_b?.name);
+        const rows = (matchesData ?? []) as unknown as MatchRow[];
 
-        const partner = mate || "(Sin compañero)";
+        let wins = 0;
+        let losses = 0;
+        const historyData: HistoryItem[] = [];
 
-        // oponentes (ambos nombres)
-        const opp1 =
-          team === "A" ? match.player_1_b?.name : match.player_1_a?.name;
-        const opp2 =
-          team === "A" ? match.player_2_b?.name : match.player_2_a?.name;
+        for (const match of rows) {
+          // identificar equipo del jugador
+          let team: "A" | "B" | null = null;
 
-        // Formato mejorado: "Miguel y Juan" en lugar de "Miguel / Juan"
-        const opponents = [opp1, opp2].filter(Boolean);
-        const opponent = opponents.length === 2
-          ? `${opponents[0]} y ${opponents[1]}`
-          : opponents[0] || "Oponente";
+          if (match.player_1_a?.id === playerId || match.player_2_a?.id === playerId) {
+            team = "A";
+          } else if (match.player_1_b?.id === playerId || match.player_2_b?.id === playerId) {
+            team = "B";
+          }
 
-        const ts = match.start_time ? Date.parse(match.start_time) : 0;
-        const dateLabel = match.start_time
-          ? formatDateMadrid(match.start_time)
-          : "—";
+          if (!team) continue;
 
-        historyData.push({
-          id: match.id,
-          partner,
-          opponent,
-          result: !isFinal ? "Pendiente" : (isWin ? "Victoria" : "Derrota"),
-          score: match.score ?? "-",
-          ts,
-          dateLabel,
+          const w = match.winner ?? "pending";
+          const isFinal = w !== "pending";
+          const isWin = isFinal ? team === w : false;
+          if (isFinal) {
+            if (isWin) wins++;
+            else losses++;
+          }
+
+          // compañero
+          const mate =
+            team === "A"
+              ? (match.player_1_a?.id === playerId
+                  ? match.player_2_a?.name
+                  : match.player_1_a?.name)
+              : (match.player_1_b?.id === playerId
+                  ? match.player_2_b?.name
+                  : match.player_1_b?.name);
+
+          const partner = mate || "(Sin compañero)";
+
+          // oponentes (ambos nombres)
+          const opp1 = team === "A" ? match.player_1_b?.name : match.player_1_a?.name;
+          const opp2 = team === "A" ? match.player_2_b?.name : match.player_2_a?.name;
+
+          // Formato mejorado: "Miguel y Juan" en lugar de "Miguel / Juan"
+          const opponents = [opp1, opp2].filter(Boolean);
+          const opponent =
+            opponents.length === 2
+              ? `${opponents[0]} y ${opponents[1]}`
+              : opponents[0] || "Oponente";
+
+          const ts = match.start_time ? Date.parse(match.start_time) : 0;
+          const dateLabel = match.start_time ? formatDateMadrid(match.start_time) : "—";
+
+          historyData.push({
+            id: match.id,
+            partner,
+            opponent,
+            result: !isFinal ? "Pendiente" : isWin ? "Victoria" : "Derrota",
+            score: match.score ?? "-",
+            ts,
+            dateLabel,
+          });
+        }
+
+        const nextStats = { wins, losses, total: wins + losses };
+        setStats(nextStats);
+
+        // ordenar por fecha real (desc)
+        historyData.sort((a, b) => b.ts - a.ts);
+        setHistory(historyData);
+
+        setClientCache<PlayerStatsCachePayload>(playerStatsCacheKey, {
+          player: playerData,
+          stats: nextStats,
+          history: historyData,
         });
+      } catch (error) {
+        console.error("[PlayerStats] load error:", error);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-
-      setStats({ wins, losses, total: wins + losses });
-
-      // ordenar por fecha real (desc)
-      historyData.sort((a, b) => b.ts - a.ts);
-      setHistory(historyData);
-
-      setLoading(false);
     };
 
     load();
@@ -192,7 +288,7 @@ export default function PlayerStatsPage() {
     };
   }, [playerId, router]);
 
-  if (loading) {
+  if (loading && !player) {
     return <p className="p-8 text-gray-500">Cargando estadísticas…</p>;
   }
 
@@ -202,10 +298,17 @@ export default function PlayerStatsPage() {
 
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6 md:p-10 space-y-8">
-      {/* Back link */}
-      <Link href="/players" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition">
-        ← Volver a jugadores
-      </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Back link */}
+        <Link href="/players" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition">
+          ← Volver a jugadores
+        </Link>
+        {refreshing && (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+            Actualizando estadísticas...
+          </span>
+        )}
+      </div>
 
       {/* Profile header */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">

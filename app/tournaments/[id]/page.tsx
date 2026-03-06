@@ -9,6 +9,7 @@ import MatchCard, { type Match } from "../../components/matches/MatchCard";
 import { useTranslation } from "../../i18n";
 import { useRole } from "../../hooks/useRole";
 import { waitForSession } from "../../lib/auth-session";
+import { getClientCache, setClientCache } from "../../lib/clientCache";
 
 type Tournament = {
   id: number;
@@ -27,6 +28,16 @@ type TournamentRound = {
   round_name: string;
   start_at: string;
 };
+
+type TournamentDetailCachePayload = {
+  tournament: Tournament | null;
+  matches: Match[];
+  tournamentRounds: TournamentRound[];
+  playersMap: PlayerMap;
+};
+
+const TOURNAMENT_DETAIL_CACHE_KEY_PREFIX = "padelx:tournament:detail:v1:";
+const TOURNAMENT_DETAIL_CACHE_TTL_MS = 90 * 1000;
 
 export default function TournamentDetail() {
   const params = useParams();
@@ -57,7 +68,21 @@ export default function TournamentDetail() {
     }
 
     const load = async () => {
-      setLoading(true);
+      const cacheKey = `${TOURNAMENT_DETAIL_CACHE_KEY_PREFIX}${idNum}`;
+      const cached = getClientCache<TournamentDetailCachePayload>(
+        cacheKey,
+        TOURNAMENT_DETAIL_CACHE_TTL_MS
+      );
+
+      if (cached) {
+        setTournament(cached.tournament ?? null);
+        setMatches(cached.matches ?? []);
+        setTournamentRounds(cached.tournamentRounds ?? []);
+        setPlayersMap(cached.playersMap ?? {});
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
 
       try {
         try {
@@ -141,6 +166,29 @@ export default function TournamentDetail() {
         } else {
           setTournamentRounds((roundsData || []) as TournamentRound[]);
         }
+
+        const safeTournament =
+          (tData as Tournament | null) ??
+          (tournamentMatches.length > 0
+            ? {
+                id: idNum,
+                name: `${t("nav.tournaments")} #${idNum}`,
+                category: null,
+                start_date: null,
+              }
+            : null);
+
+        const safePlayerMap: PlayerMap = {};
+        (pData || []).forEach((p) => {
+          safePlayerMap[p.id] = p.name;
+        });
+
+        setClientCache<TournamentDetailCachePayload>(cacheKey, {
+          tournament: safeTournament,
+          matches: tournamentMatches,
+          tournamentRounds: (roundsData || []) as TournamentRound[],
+          playersMap: safePlayerMap,
+        });
       } finally {
         setLoading(false);
       }

@@ -22,6 +22,11 @@ type UserInfo = {
   last_name?: string | null;
 };
 
+const SESSION_STARTED_AT_KEY = "padelx.sessionStartedAt";
+const SESSION_LAST_ACTIVITY_AT_KEY = "padelx.sessionLastActivityAt";
+const SESSION_USER_ID_KEY = "padelx.sessionUserId";
+const ROLE_CACHE_KEY = "padelx:role-cache:v1";
+
 export default function Sidebar({ onLinkClick }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -98,10 +103,25 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "global" });
     } catch (error) {
-      console.error("Error cerrando sesión:", error);
+      console.error("Error cerrando sesión global:", error);
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch (fallbackError) {
+        console.error("Error cerrando sesión local:", fallbackError);
+      }
     } finally {
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem(SESSION_USER_ID_KEY);
+          window.localStorage.removeItem(SESSION_STARTED_AT_KEY);
+          window.localStorage.removeItem(SESSION_LAST_ACTIVITY_AT_KEY);
+          window.localStorage.removeItem(ROLE_CACHE_KEY);
+          // No se borra REMEMBERED_EMAIL_KEY para respetar "recordar usuario"
+          window.sessionStorage.removeItem("unauthorized_redirect");
+        } catch {}
+      }
       setUser(null);
       router.push("/login");
     }

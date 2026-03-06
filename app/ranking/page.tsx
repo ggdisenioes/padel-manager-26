@@ -86,32 +86,6 @@ function getWinRate(player: RankedPlayer) {
   return Math.round((player.wins / player.played) * 100);
 }
 
-function getFormBadge(player: RankedPlayer) {
-  const winRate = getWinRate(player);
-  if (player.played < 3) {
-    return {
-      label: "En juego",
-      className: "bg-gray-100 text-gray-700 border border-gray-200",
-    };
-  }
-  if (winRate >= 70) {
-    return {
-      label: "Elite",
-      className: "bg-emerald-100 text-emerald-700 border border-emerald-200",
-    };
-  }
-  if (winRate >= 55) {
-    return {
-      label: "Firme",
-      className: "bg-blue-100 text-blue-700 border border-blue-200",
-    };
-  }
-  return {
-    label: "En mejora",
-    className: "bg-amber-100 text-amber-700 border border-amber-200",
-  };
-}
-
 export default function RankingPage() {
   const [players, setPlayers] = useState<RankedPlayer[]>([]);
   const [topLevelPlayers, setTopLevelPlayers] = useState<TopLevelPlayer[]>([]);
@@ -140,8 +114,6 @@ export default function RankingPage() {
   const rankingCacheKey = `padelx:ranking:${selectedScope}`;
 
   const scopeDescription = getScopeDescription(scopeMode, selectedTournamentName);
-  const performanceTooltip =
-    "Rendimiento = estado por porcentaje de victorias. En juego (<3 PJ), Elite (>=70%), Firme (55-69%), En mejora (<55%).";
 
   const loadRanking = useCallback(async () => {
     type RankingCachePayload = { players: RankedPlayer[]; matchCount: number };
@@ -568,7 +540,7 @@ export default function RankingPage() {
             Ranking de Jugadores
           </h1>
           <p className="relative mt-2 text-sm text-slate-200">
-            Visión ejecutiva del rendimiento: posición, efectividad y consistencia.
+            Visión ejecutiva de posición, efectividad y consistencia.
           </p>
           <div className="relative mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white border border-white/20">
@@ -673,7 +645,7 @@ export default function RankingPage() {
               {leaderByPoints ? leaderByPoints.name : "-"}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              {leaderByPoints ? `${leaderByPoints.points} pts` : "Sin referencia"}
+              {leaderByPoints ? `${leaderByPoints.points} pts` : "-"}
             </p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -686,7 +658,7 @@ export default function RankingPage() {
             <p className="mt-1 text-xs text-gray-500">
               {leaderByGamesWon
                 ? `${leaderByGamesWon.games_for} juegos`
-                : "Sin referencia"}
+                : "-"}
             </p>
           </div>
         </div>
@@ -851,23 +823,9 @@ export default function RankingPage() {
 
             <Card className="!p-0 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-[0.18em]">
-                    Tabla Pro
-                  </h2>
-                  <div className="relative group">
-                    <button
-                      type="button"
-                      aria-label="Cómo se calcula el rendimiento"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold text-slate-700"
-                    >
-                      i
-                    </button>
-                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-md border border-slate-200 bg-white p-2 text-[11px] normal-case font-medium text-slate-700 shadow-lg group-hover:block group-focus-within:block">
-                      {performanceTooltip}
-                    </div>
-                  </div>
-                </div>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-[0.18em]">
+                  Tabla Pro
+                </h2>
                 <input
                   type="text"
                   value={tableSearch}
@@ -889,7 +847,6 @@ export default function RankingPage() {
                         <tr className="text-xs uppercase text-gray-500">
                           <th className="py-3 px-3 text-left font-semibold">Pos</th>
                           <th className="py-3 px-3 text-left font-semibold">Jugador</th>
-                          <th className="py-3 px-3 text-center font-semibold">Rendimiento</th>
                           <th className="py-3 px-3 text-center font-semibold">PJ</th>
                           <th className="py-3 px-3 text-center font-semibold">PG</th>
                           <th className="py-3 px-3 text-center font-semibold">PP</th>
@@ -901,7 +858,6 @@ export default function RankingPage() {
                       <tbody>
                         {filteredPlayers.map((player) => {
                           const position = positionByPlayerId[player.id] || 0;
-                          const badge = getFormBadge(player);
                           return (
                             <tr
                               key={player.id}
@@ -920,13 +876,6 @@ export default function RankingPage() {
                                     {player.name}
                                   </span>
                                 </div>
-                              </td>
-                              <td className="py-3 px-3 text-center">
-                                <span
-                                  className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${badge.className}`}
-                                >
-                                  {badge.label}
-                                </span>
                               </td>
                               <td className="py-3 px-3 text-center text-slate-700">
                                 {player.played}
@@ -954,13 +903,8 @@ export default function RankingPage() {
                   </div>
 
                   <div className="md:hidden p-3 space-y-2">
-                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-                      <span className="font-semibold text-slate-700">Rendimiento:</span>{" "}
-                      {performanceTooltip.replace("Rendimiento = ", "")}
-                    </p>
                     {filteredPlayers.map((player) => {
                       const position = positionByPlayerId[player.id] || 0;
-                      const badge = getFormBadge(player);
                       return (
                         <button
                           key={player.id}
@@ -982,11 +926,6 @@ export default function RankingPage() {
                             </p>
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold ${badge.className}`}
-                            >
-                              {badge.label}
-                            </span>
                             <p className="text-[11px] text-gray-500">
                               Win rate:{" "}
                               <span className="font-semibold text-slate-900">

@@ -54,10 +54,23 @@ export default function CreateTenantPage() {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
+      const payload = {
+        name: formData.name.trim(),
+        admin_email: formData.admin_email.trim().toLowerCase(),
+        subscription_plan_id: formData.subscription_plan_id,
+        addon_ids: formData.addon_ids,
+        ...(formData.phone?.trim()
+          ? { phone: formData.phone.trim() }
+          : {}),
+        ...(formData.country?.trim()
+          ? { country: formData.country.trim().toUpperCase() }
+          : {}),
+      };
+
       const response = await fetch('/api/super-admin/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const json = await response.json();

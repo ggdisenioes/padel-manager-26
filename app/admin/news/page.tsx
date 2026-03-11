@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { z } from "zod";
 import { useTranslation } from "@/i18n";
 import { resolveNewsText } from "@/lib/newsPayload";
+import { getClientCache, setClientCache } from "@/lib/clientCache";
 
 const DEFAULT_COVER = "/logo-fondo.png";
 
@@ -33,6 +34,13 @@ type News = {
   title_i18n?: { es?: string; en?: string };
   content_i18n?: { es?: string; en?: string };
 };
+
+type AdminNewsCachePayload = {
+  news: News[];
+};
+
+const ADMIN_NEWS_CACHE_KEY = "padelx:admin-news:v1";
+const ADMIN_NEWS_CACHE_TTL_MS = 90 * 1000;
 
 const emptyFormData = (): NewsFormState => ({
   title: "",
@@ -107,6 +115,15 @@ export default function AdminNewsPage() {
   };
 
   useEffect(() => {
+    const cached = getClientCache<AdminNewsCachePayload>(
+      ADMIN_NEWS_CACHE_KEY,
+      ADMIN_NEWS_CACHE_TTL_MS
+    );
+    if (cached) {
+      setNews(cached.news || []);
+      setLoading(false);
+    }
+
     void checkAuth();
     void fetchNews();
   }, []);
@@ -191,7 +208,11 @@ export default function AdminNewsPage() {
       const result = await response.json();
 
       if (response.ok) {
-        setNews(result.news || []);
+        const nextNews = (result.news || []) as News[];
+        setNews(nextNews);
+        setClientCache<AdminNewsCachePayload>(ADMIN_NEWS_CACHE_KEY, {
+          news: nextNews,
+        });
       } else {
         toast.error(result.error || t("admin.newsAdmin.errorLoading"));
       }
@@ -400,7 +421,17 @@ export default function AdminNewsPage() {
   }, [editingId, news, requestedEditId]);
 
   if (loading) {
-    return <div className="p-8 text-center">{labels.loading}</div>;
+    if (news.length === 0) {
+      return (
+        <main className="max-w-5xl mx-auto p-6 space-y-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 w-1/3 rounded bg-gray-200" />
+            <div className="h-28 rounded-xl bg-gray-100" />
+            <div className="h-28 rounded-xl bg-gray-100" />
+          </div>
+        </main>
+      );
+    }
   }
 
   return (

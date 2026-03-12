@@ -5,8 +5,43 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function isMutatingMethod(method: string) {
+  return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
+}
+
+function isSameOrigin(request: NextRequest, originValue: string) {
+  try {
+    const origin = new URL(originValue);
+    const current = new URL(request.url);
+    return origin.protocol === current.protocol && origin.host === current.host;
+  } catch {
+    return false;
+  }
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Basic CSRF guard for mutating API requests:
+  // - if Origin/Referer is present, it must match current host
+  // - if Sec-Fetch-Site explicitly says cross-site, reject
+  if (pathname.startsWith("/api/") && isMutatingMethod(req.method)) {
+    const origin = req.headers.get("origin");
+    const referer = req.headers.get("referer");
+    const secFetchSite = req.headers.get("sec-fetch-site");
+
+    if (origin && !isSameOrigin(req, origin)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
+    if (!origin && referer && !isSameOrigin(req, referer)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+
+    if (!origin && !referer && secFetchSite === "cross-site") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  }
 
   // Protect /super-admin routes server-side
   if (pathname.startsWith("/super-admin") || pathname.startsWith("/api/super-admin")) {
@@ -71,5 +106,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/super-admin/:path*", "/api/super-admin/:path*"],
+  matcher: ["/super-admin/:path*", "/api/:path*"],
 };

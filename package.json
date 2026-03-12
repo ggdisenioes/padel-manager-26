@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "check:migrations": "node scripts/go-live/check-migrations-static.mjs",
+    "check:security:migrations": "node scripts/go-live/check-security-migrations.mjs",
     "check:client-secrets": "node scripts/go-live/check-client-secrets.mjs",
     "check:e2e-env": "node scripts/go-live/check-e2e-env.mjs",
     "check:backup-readiness": "node scripts/go-live/check-backup-readiness.mjs",

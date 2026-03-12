@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import { getClientIp, rateLimitAsync } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -112,14 +112,14 @@ async function getAuthSignInMap(
 export async function GET(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { success } = rateLimit(`pending-invitations:${ip}`, {
+    const { success, retryAfterSeconds } = await rateLimitAsync(`pending-invitations:${ip}`, {
       maxRequests: 30,
       windowMs: 60_000,
     });
     if (!success) {
       return NextResponse.json(
         { error: "Demasiados intentos. Intentá en un minuto." },
-        { status: 429 }
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
       );
     }
 

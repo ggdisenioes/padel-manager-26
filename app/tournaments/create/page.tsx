@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
@@ -9,12 +9,22 @@ import { logAction } from "../../lib/audit";
 import { useTenantPlan } from "../../hooks/useTenantPlan";
 import { useRole } from "../../hooks/useRole";
 import { supabase } from "../../lib/supabase";
+import {
+  DEFAULT_LEAGUE_MODE,
+  DEFAULT_TOURNAMENT_TYPE,
+  LEAGUE_MODE_LABEL,
+  TOURNAMENT_TYPE_LABEL,
+  type LeagueMode,
+  type TournamentType,
+} from "../../lib/tournamentFormats";
 
 type TournamentInsert = {
   name: string;
   category: string;
   status: string;
   start_date: string | null;
+  tournament_type: TournamentType;
+  league_mode: LeagueMode | null;
   rounds: Array<{
     round_number: number;
     round_name: string;
@@ -31,31 +41,15 @@ export default function CreateTournament() {
   const [category, setCategory] = useState("Mixto A");
   const [status, setStatus] = useState("open");
   const [startDate, setStartDate] = useState<string>("");
+  const [tournamentType, setTournamentType] = useState<TournamentType>(DEFAULT_TOURNAMENT_TYPE);
+  const [leagueMode, setLeagueMode] = useState<LeagueMode>(DEFAULT_LEAGUE_MODE);
   const [roundsCount, setRoundsCount] = useState<number>(1);
   const [roundStarts, setRoundStarts] = useState<string[]>([""]);
   const [loading, setLoading] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
   const [isCustomCategory, setIsCustomCategory] = useState(false);
 
-  useEffect(() => {
-    setRoundStarts((prev) => {
-      const desired = Math.max(1, Math.min(40, roundsCount));
-      const next = [...prev];
-      while (next.length < desired) next.push("");
-      return next.slice(0, desired);
-    });
-  }, [roundsCount]);
-
-  useEffect(() => {
-    if (!startDate) return;
-    setRoundStarts((prev) => {
-      if (!prev.length || prev[0]) return prev;
-      const firstStart = `${startDate}T20:00`;
-      const next = [...prev];
-      next[0] = firstStart;
-      return next;
-    });
-  }, [startDate]);
+  const isLeague = tournamentType === "league";
 
   useEffect(() => {
     if (roleLoading) return;
@@ -64,6 +58,16 @@ export default function CreateTournament() {
       router.replace("/tournaments");
     }
   }, [isAdmin, isManager, roleLoading, router]);
+
+  const tournamentSummary = useMemo(() => {
+    if (tournamentType === "cup") {
+      return "Copa por eliminación directa: cada partido define quién avanza en el cuadro y quién queda eliminado.";
+    }
+
+    return leagueMode === "double_leg"
+      ? "Liga todos contra todos con ida y vuelta entre cada cruce de parejas."
+      : "Liga todos contra todos con un único cruce por enfrentamiento de parejas.";
+  }, [leagueMode, tournamentType]);
 
   const handleCreate = async () => {
     if (!isAdmin && !isManager) {
@@ -83,9 +87,7 @@ export default function CreateTournament() {
 
     setLoading(true);
 
-    const finalCategory = isCustomCategory
-      ? customCategory.trim()
-      : category;
+    const finalCategory = isCustomCategory ? customCategory.trim() : category;
 
     if (!finalCategory) {
       toast.error("Ingresá una categoría válida");
@@ -98,35 +100,39 @@ export default function CreateTournament() {
       category: finalCategory,
       status,
       start_date: startDate ? startDate : null,
+      tournament_type: tournamentType,
+      league_mode: tournamentType === "league" ? leagueMode : null,
       rounds: [],
     };
 
-    const normalizedRoundCount = Math.max(1, Math.min(40, roundsCount));
-    const roundsPayload: TournamentInsert["rounds"] = [];
+    if (isLeague) {
+      const normalizedRoundCount = Math.max(1, Math.min(40, roundsCount));
+      const roundsPayload: TournamentInsert["rounds"] = [];
 
-    for (let index = 0; index < normalizedRoundCount; index += 1) {
-      const localDateTime = String(roundStarts[index] || "").trim();
-      if (!localDateTime) {
-        toast.error(`Completá la fecha de inicio de la jornada ${index + 1}`);
-        setLoading(false);
-        return;
+      for (let index = 0; index < normalizedRoundCount; index += 1) {
+        const localDateTime = String(roundStarts[index] || "").trim();
+        if (!localDateTime) {
+          toast.error(`Completá la fecha de inicio de la jornada ${index + 1}`);
+          setLoading(false);
+          return;
+        }
+
+        const parsed = new Date(localDateTime);
+        if (Number.isNaN(parsed.getTime())) {
+          toast.error(`La fecha de la jornada ${index + 1} es inválida`);
+          setLoading(false);
+          return;
+        }
+
+        roundsPayload.push({
+          round_number: index + 1,
+          round_name: `Fecha ${index + 1}`,
+          start_at: parsed.toISOString(),
+        });
       }
 
-      const parsed = new Date(localDateTime);
-      if (Number.isNaN(parsed.getTime())) {
-        toast.error(`La fecha de la jornada ${index + 1} es inválida`);
-        setLoading(false);
-        return;
-      }
-
-      roundsPayload.push({
-        round_number: index + 1,
-        round_name: `Fecha ${index + 1}`,
-        start_at: parsed.toISOString(),
-      });
+      payload.rounds = roundsPayload;
     }
-
-    payload.rounds = roundsPayload;
 
     const {
       data: { session },
@@ -156,7 +162,6 @@ export default function CreateTournament() {
       return;
     }
 
-    // Log de auditoría
     try {
       await logAction({
         action: "CREATE_TOURNAMENT",
@@ -165,14 +170,12 @@ export default function CreateTournament() {
         metadata: payload,
       });
     } catch (e) {
-      // No bloqueamos la UX si el log falla
       console.warn("No se pudo registrar la acción en auditoría", e);
     }
 
     toast.success("Torneo creado");
     setLoading(false);
 
-    // Redirigir a edición del torneo recién creado
     router.push(`/tournaments/edit/${result.data.id}`);
   };
 
@@ -194,8 +197,8 @@ export default function CreateTournament() {
         </div>
       )}
 
-      <Card className="max-w-3xl">
-        <div className="space-y-4">
+      <Card className="max-w-4xl">
+        <div className="space-y-5">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Nombre</label>
             <input
@@ -234,9 +237,7 @@ export default function CreateTournament() {
 
           {isCustomCategory && (
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">
-                Nombre de la nueva categoría
-              </label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Nombre de la nueva categoría</label>
               <input
                 value={customCategory}
                 onChange={(e) => setCustomCategory(e.target.value)}
@@ -260,58 +261,154 @@ export default function CreateTournament() {
           </div>
 
           <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">Tipo de torneo</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(["league", "cup"] as TournamentType[]).map((typeOption) => {
+                const active = tournamentType === typeOption;
+                return (
+                  <button
+                    key={typeOption}
+                    type="button"
+                    onClick={() => setTournamentType(typeOption)}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      active
+                        ? "border-green-500 bg-green-50 shadow-sm"
+                        : "border-gray-300 bg-white hover:border-gray-400"
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-900">{TOURNAMENT_TYPE_LABEL[typeOption]}</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {typeOption === "league"
+                        ? "Todos contra todos entre parejas."
+                        : "Eliminación directa en formato de llaves."}
+                    </p>
+
+                    {typeOption === "league" ? (
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="h-px flex-1 bg-emerald-300" />
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        <span className="h-px flex-1 bg-emerald-300" />
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-3 gap-1 items-center">
+                        <span className="h-6 rounded bg-blue-100" />
+                        <span className="h-px bg-blue-300" />
+                        <span className="h-6 rounded bg-indigo-100" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {isLeague && (
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Modo de Liga</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(["single_leg", "double_leg"] as LeagueMode[]).map((modeOption) => {
+                  const active = leagueMode === modeOption;
+                  return (
+                    <button
+                      key={modeOption}
+                      type="button"
+                      onClick={() => setLeagueMode(modeOption)}
+                      className={`rounded-xl border p-4 text-left transition ${
+                        active
+                          ? "border-indigo-500 bg-indigo-50 shadow-sm"
+                          : "border-gray-300 bg-white hover:border-gray-400"
+                      }`}
+                    >
+                      <p className="font-semibold text-gray-900">{LEAGUE_MODE_LABEL[modeOption]}</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {modeOption === "single_leg"
+                          ? "Cada pareja juega una vez contra cada rival."
+                          : "Cada cruce se juega dos veces (ida y vuelta)."}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <p className="font-semibold text-gray-800 mb-1">Resumen del formato</p>
+            <p>{tournamentSummary}</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">Fecha Inicio</label>
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Cantidad de jornadas</label>
-            <input
-              type="number"
-              min={1}
-              max={40}
-              value={roundsCount}
               onChange={(e) => {
-                const parsed = Number(e.target.value);
-                if (!Number.isFinite(parsed)) {
-                  setRoundsCount(1);
-                  return;
-                }
-                setRoundsCount(Math.max(1, Math.min(40, Math.trunc(parsed))));
+                const value = e.target.value;
+                setStartDate(value);
+                if (!isLeague || !value) return;
+                setRoundStarts((prev) => {
+                  if (!prev.length || prev[0]) return prev;
+                  const next = [...prev];
+                  next[0] = `${value}T20:00`;
+                  return next;
+                });
               }}
               className="w-full border border-gray-300 rounded px-3 py-2"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Definí cuántas fechas (jornadas) tendrá este torneo.
-            </p>
           </div>
 
-          <div className="space-y-3">
-            <p className="text-sm font-semibold text-gray-700">Fechas de inicio por jornada</p>
-            {Array.from({ length: Math.max(1, Math.min(40, roundsCount)) }).map((_, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 items-center">
-                <label className="text-sm text-gray-600">{`Jornada ${index + 1}`}</label>
+          {isLeague && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Cantidad de jornadas</label>
                 <input
-                  type="datetime-local"
-                  value={roundStarts[index] || ""}
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={roundsCount}
                   onChange={(e) => {
-                    const value = e.target.value;
+                    const parsed = Number(e.target.value);
+                    const nextCount = Number.isFinite(parsed)
+                      ? Math.max(1, Math.min(40, Math.trunc(parsed)))
+                      : 1;
+
+                    setRoundsCount(nextCount);
                     setRoundStarts((prev) => {
                       const next = [...prev];
-                      next[index] = value;
-                      return next;
+                      while (next.length < nextCount) next.push("");
+                      return next.slice(0, nextCount);
                     });
                   }}
                   className="w-full border border-gray-300 rounded px-3 py-2"
                 />
+                <p className="text-xs text-gray-500 mt-1">Definí cuántas fechas tendrá la liga.</p>
               </div>
-            ))}
-          </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700">Fechas de inicio por jornada</p>
+                {Array.from({ length: Math.max(1, Math.min(40, roundsCount)) }).map((_, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-[140px_1fr] gap-2 items-center">
+                    <label className="text-sm text-gray-600">{`Jornada ${index + 1}`}</label>
+                    <input
+                      type="datetime-local"
+                      value={roundStarts[index] || ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setRoundStarts((prev) => {
+                          const next = [...prev];
+                          next[index] = value;
+                          return next;
+                        });
+                      }}
+                      className="w-full border border-gray-300 rounded px-3 py-2"
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="flex items-center gap-3 justify-end pt-2">
             <button

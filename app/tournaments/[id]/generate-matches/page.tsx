@@ -8,6 +8,17 @@ import { supabase } from "../../../lib/supabase";
 import { useRole } from "../../../hooks/useRole";
 import { notifyMatchCreated } from "../../../lib/notify";
 import Card from "../../../components/Card";
+import {
+  DEFAULT_LEAGUE_MODE,
+  DEFAULT_TOURNAMENT_TYPE,
+  LEAGUE_MODE_LABEL,
+  TOURNAMENT_TYPE_LABEL,
+  getCupPhaseName,
+  isPowerOfTwo,
+  nextPowerOfTwo,
+  type LeagueMode,
+  type TournamentType,
+} from "../../../lib/tournamentFormats";
 
 type Player = {
   id: number;
@@ -15,11 +26,9 @@ type Player = {
   level?: number | null;
 };
 
-type Format = "liga" | "grupos" | "eliminacion";
-
 type Team = {
-  a: number; // jugador 1
-  b: number; // jugador 2
+  a: number;
+  b: number;
 };
 
 type TournamentRound = {
@@ -29,26 +38,37 @@ type TournamentRound = {
   start_at: string;
 };
 
-const ROUND_NAMES: Record<number, string> = {
-  2: "Final",
-  4: "Semifinal",
-  8: "Cuartos",
-  16: "Octavos",
+type TournamentConfig = {
+  id: number;
+  name: string;
+  start_date: string | null;
+  tournament_type?: TournamentType | null;
+  league_mode?: LeagueMode | null;
 };
 
-function isPowerOfTwo(n: number) {
-  return (n & (n - 1)) === 0 && n !== 0;
-}
+type MatchForGeneration = {
+  id?: number;
+  round_name: string | null;
+  start_time: string;
+  winner: string | null;
+  player_1_a: number | null;
+  player_2_a: number | null;
+  player_1_b: number | null;
+  player_2_b: number | null;
+};
 
-function nextPowerOfTwo(n: number) {
-  let count = 0;
-  if (n && !(n & (n - 1))) return n;
-  while (n !== 0) {
-    n >>= 1;
-    count += 1;
-  }
-  return 1 << count;
-}
+type MatchInsertPayload = {
+  tournament_id: number;
+  round_name: string;
+  player_1_a: number;
+  player_2_a: number;
+  player_1_b: number;
+  player_2_b: number;
+  start_time: string;
+  score: null;
+  winner: null;
+  place: null;
+};
 
 function createSeededRandom(seed: number) {
   let t = seed >>> 0;
@@ -73,10 +93,40 @@ function teamKey(t: Team) {
   return [t.a, t.b].sort((x, y) => x - y).join("-");
 }
 
-function matchupKey(t1: Team, t2: Team) {
+function directedMatchupKey(home: Team, away: Team) {
+  return `${teamKey(home)}__${teamKey(away)}`;
+}
+
+function undirectedMatchupKey(t1: Team, t2: Team) {
   const k1 = teamKey(t1);
   const k2 = teamKey(t2);
   return [k1, k2].sort().join("__");
+}
+
+function phaseSize(phase: string) {
+  const normalized = phase.trim().toLowerCase();
+  if (normalized === "final") return 2;
+  if (normalized === "semifinal") return 4;
+  if (normalized === "cuartos") return 8;
+  if (normalized === "octavos") return 16;
+  if (normalized === "dieciseisavos") return 32;
+  const roundMatch = normalized.match(/ronda\s+de\s+(\d+)/i);
+  const parsed = roundMatch ? Number(roundMatch[1]) : NaN;
+  return Number.isFinite(parsed) && parsed >= 2 ? parsed : null;
+}
+
+function nextCupPhase(currentPhase: string) {
+  const currentSize = phaseSize(currentPhase);
+  if (!currentSize || currentSize <= 2) return null;
+  return getCupPhaseName(Math.max(2, currentSize / 2));
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (typeof error === "object" && error && "message" in error) {
+    const value = (error as { message?: unknown }).message;
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return fallback;
 }
 
 export default function GenerateMatchesPage() {
@@ -88,23 +138,16 @@ export default function GenerateMatchesPage() {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayers, setSelectedPlayers] = useState<number[]>([]);
-  const [format, setFormat] = useState<Format>("liga");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [creatingNextPhase, setCreatingNextPhase] = useState(false);
   const [rounds, setRounds] = useState<TournamentRound[]>([]);
   const [selectedRoundId, setSelectedRoundId] = useState<string>("");
-
-  // Fecha base (necesaria porque start_time en matches es NOT NULL)
   const [startDate, setStartDate] = useState<string>("");
 
-  // Grupos
-  const [groupsCount, setGroupsCount] = useState(2);
-  const [roundTrip, setRoundTrip] = useState(false);
-
-  // Eliminación
-  // También se usa para armar parejas “balanceadas” por nivel
   const [seeded, setSeeded] = useState(false);
   const [pairingSeed, setPairingSeed] = useState<number>(() => (Date.now() % 2147483647) | 0);
+  const [tournament, setTournament] = useState<TournamentConfig | null>(null);
 
   const tournamentId = useMemo(() => Number(id), [id]);
   const selectedRound = useMemo(
@@ -112,43 +155,50 @@ export default function GenerateMatchesPage() {
     [rounds, selectedRoundId]
   );
 
-  /* 🚫 Seguridad */
-  if (!roleLoading && !isAdmin && !isManager) {
-    return (
-      <main className="max-w-xl mx-auto p-6">
-        <p className="text-red-600 font-semibold">
-          No tenés permisos para generar partidos.
-        </p>
-      </main>
-    );
-  }
+  const tournamentType: TournamentType =
+    tournament?.tournament_type && ["league", "cup"].includes(tournament.tournament_type)
+      ? tournament.tournament_type
+      : DEFAULT_TOURNAMENT_TYPE;
 
-  /* 📥 Cargar jugadores aprobados */
+  const leagueMode: LeagueMode =
+    tournament?.league_mode && ["single_leg", "double_leg"].includes(tournament.league_mode)
+      ? tournament.league_mode
+      : DEFAULT_LEAGUE_MODE;
+
   useEffect(() => {
-    const loadPlayers = async () => {
+    const loadData = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("players")
-        .select("id, name, level")
-        .eq("is_approved", true)
-        .is("deleted_at", null)
-        .order("name");
 
-      if (error) {
-        console.error(error);
+      const [
+        { data: playersData, error: playersError },
+        { data: roundsData, error: roundsError },
+        { data: tournamentData, error: tournamentError },
+      ] = await Promise.all([
+        supabase
+          .from("players")
+          .select("id, name, level")
+          .eq("is_approved", true)
+          .is("deleted_at", null)
+          .order("name"),
+        supabase
+          .from("tournament_rounds")
+          .select("id, round_number, round_name, start_at")
+          .eq("tournament_id", tournamentId)
+          .order("round_number", { ascending: true }),
+        supabase
+          .from("tournaments")
+          .select("id, name, start_date, tournament_type, league_mode")
+          .eq("id", tournamentId)
+          .maybeSingle(),
+      ]);
+
+      if (playersError) {
+        console.error(playersError);
         toast.error("Error al cargar jugadores");
         setPlayers([]);
-        setLoading(false);
-        return;
+      } else {
+        setPlayers((playersData || []) as Player[]);
       }
-
-      setPlayers((data || []) as Player[]);
-
-      const { data: roundsData, error: roundsError } = await supabase
-        .from("tournament_rounds")
-        .select("id, round_number, round_name, start_at")
-        .eq("tournament_id", tournamentId)
-        .order("round_number", { ascending: true });
 
       if (roundsError) {
         console.error("[generate-matches] error cargando jornadas", roundsError);
@@ -163,17 +213,26 @@ export default function GenerateMatchesPage() {
           setStartDate(initialRound.start_at.slice(0, 10));
         }
       }
+
+      if (tournamentError) {
+        console.error("[generate-matches] error cargando torneo", tournamentError);
+      }
+
+      if (tournamentData) {
+        const tournamentConfig = tournamentData as TournamentConfig;
+        setTournament(tournamentConfig);
+        setStartDate((prev) => prev || tournamentConfig.start_date || "");
+      }
+
       setLoading(false);
     };
 
-    loadPlayers();
+    void loadData();
   }, [tournamentId, requestedRoundId]);
 
   const togglePlayer = (playerId: number) => {
     setSelectedPlayers((prev) =>
-      prev.includes(playerId)
-        ? prev.filter((x) => x !== playerId)
-        : [...prev, playerId]
+      prev.includes(playerId) ? prev.filter((x) => x !== playerId) : [...prev, playerId]
     );
   };
 
@@ -182,12 +241,7 @@ export default function GenerateMatchesPage() {
     [players, selectedPlayers]
   );
 
-  /**
-   * ✅ Armado de parejas (2vs2):
-   * - Si seeded = true: balancea por nivel (mejor con peor)
-   * - Si seeded = false: aleatorio
-   */
-  const buildTeams = (): Team[] => {
+  const teamsPreview = useMemo(() => {
     if (selectedPlayerObjs.length < 4) return [];
     if (selectedPlayerObjs.length % 2 !== 0) return [];
 
@@ -201,44 +255,74 @@ export default function GenerateMatchesPage() {
         return a.name.localeCompare(b.name);
       });
 
-      // Balance: mejor con peor
       const teams: Team[] = [];
       let i = 0;
       let j = list.length - 1;
       while (i < j) {
         teams.push({ a: list[i].id, b: list[j].id });
-        i++;
-        j--;
+        i += 1;
+        j -= 1;
       }
       return teams;
     }
 
-    // Aleatorio (determinista para que preview y generación coincidan)
     list = shuffleArray(list, createSeededRandom(pairingSeed));
     const teams: Team[] = [];
     for (let i = 0; i < list.length; i += 2) {
       teams.push({ a: list[i].id, b: list[i + 1].id });
     }
     return teams;
+  }, [pairingSeed, seeded, selectedPlayerObjs]);
+
+  const fetchExistingTournamentMatches = async () => {
+    const { data, error } = await supabase
+      .from("matches")
+      .select("id, round_name, start_time, winner, player_1_a, player_2_a, player_1_b, player_2_b")
+      .eq("tournament_id", tournamentId)
+      .order("start_time", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data || []) as MatchForGeneration[];
   };
 
-  const teamsPreview = useMemo(() => buildTeams(), [selectedPlayerObjs, seeded, pairingSeed]);
+  const createMatchesInDb = async (newMatches: MatchInsertPayload[]) => {
+    const { data: createdMatches, error: insertError } = await supabase
+      .from("matches")
+      .insert(newMatches)
+      .select("id");
 
-  const formatLabel = (f: Format) => {
-    if (f === "liga") return "Liga (todos contra todos)";
-    if (f === "grupos") return "Grupos";
-    return "Eliminación directa";
+    if (insertError) {
+      throw insertError;
+    }
+
+    const normalized = (createdMatches || []) as Array<{ id: number }>;
+
+    if (normalized.length > 0) {
+      notifyMatchCreated(normalized.map((m) => m.id));
+    }
+
+    return normalized.length;
   };
 
-  /* 🧠 Generar partidos (SIEMPRE 2vs2) */
-  const generateMatches = async () => {
-    // Reglas 2vs2
+  const baseStartDate = () => {
+    const baseCandidate = selectedRound?.start_at || startDate || tournament?.start_date || "";
+    const parsed = new Date(baseCandidate);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  };
+
+  const leagueRoundName = () => selectedRound?.round_name || "Liga";
+
+  const generateLeagueMatches = async () => {
     if (selectedPlayers.length < 4) {
       toast.error("Seleccioná al menos 4 jugadores (2 parejas)");
       return;
     }
     if (selectedPlayers.length % 2 !== 0) {
-      toast.error("Para 2vs2 necesitás un número PAR de jugadores (se arman parejas)");
+      toast.error("Para 2vs2 necesitás un número PAR de jugadores");
       return;
     }
 
@@ -247,28 +331,10 @@ export default function GenerateMatchesPage() {
       return;
     }
 
-    if (!startDate && !selectedRound?.start_at) {
-      toast.error("Seleccioná la fecha de inicio del torneo");
+    const baseStart = baseStartDate();
+    if (!baseStart) {
+      toast.error("Seleccioná una fecha de inicio válida");
       return;
-    }
-
-    if (!tournamentId || Number.isNaN(tournamentId)) {
-      toast.error("ID de torneo inválido");
-      return;
-    }
-
-    // Validaciones específicas
-    if (format === "grupos") {
-      if (groupsCount < 2) {
-        toast.error("La cantidad de grupos debe ser al menos 2");
-        return;
-      }
-      // grupos no puede ser mayor que cantidad de PAREJAS
-      const teamsCount = teamsPreview.length;
-      if (groupsCount > Math.max(2, teamsCount)) {
-        toast.error("La cantidad de grupos no puede ser mayor que la cantidad de parejas");
-        return;
-      }
     }
 
     const teams = teamsPreview;
@@ -279,247 +345,428 @@ export default function GenerateMatchesPage() {
 
     setCreating(true);
 
-    // 🔎 Traer partidos existentes para evitar duplicados (por parejas)
-    const { data: existingMatches, error: existingError } = await supabase
-      .from("matches")
-      .select("player_1_a, player_2_a, player_1_b, player_2_b, tournament_id")
-      .eq("tournament_id", tournamentId);
+    try {
+      const existingMatches = await fetchExistingTournamentMatches();
 
-    if (existingError) {
-      console.error(existingError);
-      toast.error("No se pudieron leer los partidos existentes");
-      setCreating(false);
-      return;
-    }
+      const existingUndirected = new Set<string>();
+      const existingDirected = new Set<string>();
 
-    const existingMatchups = new Set<string>();
-    (existingMatches || []).forEach((m: any) => {
-      const a1 = m.player_1_a as number | null;
-      const a2 = m.player_2_a as number | null;
-      const b1 = m.player_1_b as number | null;
-      const b2 = m.player_2_b as number | null;
-      if (a1 == null || a2 == null || b1 == null || b2 == null) return;
-      existingMatchups.add(matchupKey({ a: a1, b: a2 }, { a: b1, b: b2 }));
-    });
+      existingMatches.forEach((m) => {
+        const a1 = m.player_1_a;
+        const a2 = m.player_2_a;
+        const b1 = m.player_1_b;
+        const b2 = m.player_2_b;
+        if (a1 == null || a2 == null || b1 == null || b2 == null) return;
 
-    const matchupExists = (t1: Team, t2: Team) => existingMatchups.has(matchupKey(t1, t2));
-
-    const baseStart = new Date(selectedRound?.start_at || startDate);
-    if (Number.isNaN(baseStart.getTime())) {
-      toast.error("Fecha inválida");
-      setCreating(false);
-      return;
-    }
-
-    // Para no insertar todo con la misma hora, escalonamos en minutos (opcional pero útil)
-    const startAt = (idx: number) => {
-      const d = new Date(baseStart);
-      d.setMinutes(d.getMinutes() + idx * 5);
-      return d.toISOString();
-    };
-
-    let newMatches: any[] = [];
-    let matchIndex = 0;
-    let skippedExisting = 0;
-
-    if (format === "liga") {
-      // Liga (todos contra todos) ENTRE PAREJAS
-      const leagueRoundName = selectedRound?.round_name || "Liga";
-      for (let i = 0; i < teams.length; i++) {
-        for (let j = i + 1; j < teams.length; j++) {
-          const t1 = teams[i];
-          const t2 = teams[j];
-          if (matchupExists(t1, t2)) {
-            skippedExisting++;
-            continue;
-          }
-
-          newMatches.push({
-            tournament_id: tournamentId,
-            round_name: leagueRoundName,
-            player_1_a: t1.a,
-            player_2_a: t1.b,
-            player_1_b: t2.a,
-            player_2_b: t2.b,
-            start_time: startAt(matchIndex++),
-            score: null,
-            winner: null,
-            place: null,
-          });
-
-          // Ida y vuelta en liga (si querés, lo dejamos sólo para grupos; acá NO)
-        }
-      }
-    }
-
-    if (format === "grupos") {
-      const shuffledTeams = shuffleArray(teams, createSeededRandom(pairingSeed + 1));
-      const groups: Team[][] = Array.from({ length: groupsCount }, () => []);
-      shuffledTeams.forEach((t, idx) => {
-        groups[idx % groupsCount].push(t);
+        const teamHome = { a: a1, b: a2 };
+        const teamAway = { a: b1, b: b2 };
+        existingUndirected.add(undirectedMatchupKey(teamHome, teamAway));
+        existingDirected.add(directedMatchupKey(teamHome, teamAway));
       });
 
-      groups.forEach((groupTeams, idx) => {
-        const baseGroupName = `Grupo ${String.fromCharCode(65 + idx)}`;
-        const groupName = selectedRound
-          ? `${selectedRound.round_name} - ${baseGroupName}`
-          : baseGroupName;
+      const startAt = (idx: number) => {
+        const d = new Date(baseStart);
+        d.setMinutes(d.getMinutes() + idx * 5);
+        return d.toISOString();
+      };
 
-        for (let i = 0; i < groupTeams.length; i++) {
-          for (let j = i + 1; j < groupTeams.length; j++) {
-            const t1 = groupTeams[i];
-            const t2 = groupTeams[j];
-            if (matchupExists(t1, t2)) {
-              skippedExisting++;
+      const nextMatches: MatchInsertPayload[] = [];
+      let idx = 0;
+      let skipped = 0;
+
+      for (let i = 0; i < teams.length; i += 1) {
+        for (let j = i + 1; j < teams.length; j += 1) {
+          const t1 = teams[i];
+          const t2 = teams[j];
+
+          if (leagueMode === "single_leg") {
+            const keyUndirected = undirectedMatchupKey(t1, t2);
+            if (existingUndirected.has(keyUndirected)) {
+              skipped += 1;
               continue;
             }
 
-            newMatches.push({
+            nextMatches.push({
               tournament_id: tournamentId,
-              round_name: groupName,
+              round_name: leagueRoundName(),
               player_1_a: t1.a,
               player_2_a: t1.b,
               player_1_b: t2.a,
               player_2_b: t2.b,
-              start_time: startAt(matchIndex++),
+              start_time: startAt(idx++),
               score: null,
               winner: null,
               place: null,
             });
 
-            if (roundTrip) {
-              newMatches.push({
-                tournament_id: tournamentId,
-                round_name: groupName,
-                player_1_a: t2.a,
-                player_2_a: t2.b,
-                player_1_b: t1.a,
-                player_2_b: t1.b,
-                start_time: startAt(matchIndex++),
-                score: null,
-                winner: null,
-                place: null,
-              });
-            }
+            existingUndirected.add(keyUndirected);
+            existingDirected.add(directedMatchupKey(t1, t2));
+            existingDirected.add(directedMatchupKey(t2, t1));
+            continue;
           }
+
+          const idaKey = directedMatchupKey(t1, t2);
+          if (!existingDirected.has(idaKey)) {
+            nextMatches.push({
+              tournament_id: tournamentId,
+              round_name: `${leagueRoundName()} · Ida`,
+              player_1_a: t1.a,
+              player_2_a: t1.b,
+              player_1_b: t2.a,
+              player_2_b: t2.b,
+              start_time: startAt(idx++),
+              score: null,
+              winner: null,
+              place: null,
+            });
+            existingDirected.add(idaKey);
+          } else {
+            skipped += 1;
+          }
+
+          const vueltaKey = directedMatchupKey(t2, t1);
+          if (!existingDirected.has(vueltaKey)) {
+            nextMatches.push({
+              tournament_id: tournamentId,
+              round_name: `${leagueRoundName()} · Vuelta`,
+              player_1_a: t2.a,
+              player_2_a: t2.b,
+              player_1_b: t1.a,
+              player_2_b: t1.b,
+              start_time: startAt(idx++),
+              score: null,
+              winner: null,
+              place: null,
+            });
+            existingDirected.add(vueltaKey);
+          } else {
+            skipped += 1;
+          }
+
+          existingUndirected.add(undirectedMatchupKey(t1, t2));
         }
+      }
+
+      if (nextMatches.length === 0) {
+        toast.error("No hay nuevos partidos para generar");
+        return;
+      }
+
+      const createdCount = await createMatchesInDb(nextMatches);
+
+      await supabase.from("action_logs").insert({
+        action: "GENERATE_MATCHES",
+        entity: "tournament",
+        entity_id: tournamentId,
+        metadata: {
+          tournament_type: tournamentType,
+          league_mode: leagueMode,
+          players: selectedPlayers.length,
+          teams: teams.length,
+          created_matches: createdCount,
+          skipped_existing: skipped,
+          round: selectedRound?.round_name || null,
+        },
       });
+
+      toast.success(
+        skipped > 0
+          ? `Se generaron ${createdCount} partidos. ${skipped} cruces ya existían y se omitieron.`
+          : `Se generaron ${createdCount} partidos.`
+      );
+      router.push(`/tournaments/${id}`);
+    } catch (error: unknown) {
+      console.error("[generate league]", error);
+      toast.error(getErrorMessage(error, "Error al generar partidos de liga"));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const generateCupInitialPhase = async () => {
+    if (selectedPlayers.length < 4) {
+      toast.error("Seleccioná al menos 4 jugadores (2 parejas)");
+      return;
+    }
+    if (selectedPlayers.length % 2 !== 0) {
+      toast.error("Para 2vs2 necesitás un número PAR de jugadores");
+      return;
     }
 
-    if (format === "eliminacion") {
-      // Eliminación directa ENTRE PAREJAS
-      // Necesita cantidad de parejas potencia de 2. Si no, agregamos BYE (parejas libres) a nivel bracket.
+    const teams = teamsPreview;
+    if (!isPowerOfTwo(teams.length)) {
+      const nextSize = nextPowerOfTwo(teams.length);
+      toast.error(`Para Copa necesitás ${nextSize} parejas exactas (potencia de 2).`);
+      return;
+    }
 
-      let elimTeams = [...teams];
+    const baseStart = baseStartDate();
+    if (!baseStart) {
+      toast.error("Seleccioná una fecha de inicio válida");
+      return;
+    }
 
-      // Seed automático: ordena parejas por suma de niveles (o por nivel alto/alto), simple:
-      // Como los jugadores ya vienen armados, hacemos ranking por (nivelA + nivelB) desc
+    setCreating(true);
+
+    try {
+      const existingMatches = await fetchExistingTournamentMatches();
+      if (existingMatches.length > 0) {
+        toast.error("Esta copa ya tiene partidos. Usá 'Generar siguiente fase'.");
+        return;
+      }
+
+      let cupTeams = [...teams];
       if (seeded) {
         const levelMap = new Map<number, number>();
         players.forEach((p) => levelMap.set(p.id, p.level ?? -1));
 
-        elimTeams.sort((t1, t2) => {
+        cupTeams.sort((t1, t2) => {
           const s1 = (levelMap.get(t1.a) ?? -1) + (levelMap.get(t1.b) ?? -1);
           const s2 = (levelMap.get(t2.a) ?? -1) + (levelMap.get(t2.b) ?? -1);
           if (s1 !== s2) return s2 - s1;
           return teamKey(t1).localeCompare(teamKey(t2));
         });
       } else {
-        elimTeams = shuffleArray(elimTeams, createSeededRandom(pairingSeed + 2));
+        cupTeams = shuffleArray(cupTeams, createSeededRandom(pairingSeed + 7));
       }
 
-      const n = elimTeams.length;
-      const nextPow2 = isPowerOfTwo(n) ? n : nextPowerOfTwo(n);
-      const byesNeeded = nextPow2 - n;
+      const startAt = (idx: number) => {
+        const d = new Date(baseStart);
+        d.setMinutes(d.getMinutes() + idx * 5);
+        return d.toISOString();
+      };
 
-      // “BYE” en eliminación: equipos que pasan de ronda sin jugar.
-      // En vez de insertar partidos con nulls, simplemente dejamos equipos sin rival.
-      // Para la primera ronda, emparejamos en espejo y saltamos los que no tengan rival.
-      const eliminationBaseRoundName = ROUND_NAMES[nextPow2] || `Ronda de ${nextPow2}`;
-      const roundName = selectedRound
-        ? `${selectedRound.round_name} - ${eliminationBaseRoundName}`
-        : eliminationBaseRoundName;
+      const phaseName = getCupPhaseName(cupTeams.length);
+      const nextMatches: MatchInsertPayload[] = [];
+      let idx = 0;
 
-      // Armamos una grilla con huecos (BYE)
-      const slots: (Team | null)[] = [...elimTeams];
-      for (let i = 0; i < byesNeeded; i++) slots.push(null);
-
-      const half = slots.length / 2;
-      for (let i = 0; i < half; i++) {
-        const t1 = slots[i];
-        const t2 = slots[slots.length - 1 - i];
-        if (!t1 || !t2) continue; // BYE => no se crea partido
-        if (matchupExists(t1, t2)) {
-          skippedExisting++;
-          continue;
-        }
-
-        newMatches.push({
+      for (let i = 0; i < cupTeams.length / 2; i += 1) {
+        const teamA = cupTeams[i];
+        const teamB = cupTeams[cupTeams.length - 1 - i];
+        nextMatches.push({
           tournament_id: tournamentId,
-          round_name: roundName,
-          player_1_a: t1.a,
-          player_2_a: t1.b,
-          player_1_b: t2.a,
-          player_2_b: t2.b,
-          start_time: startAt(matchIndex++),
+          round_name: phaseName,
+          player_1_a: teamA.a,
+          player_2_a: teamA.b,
+          player_1_b: teamB.a,
+          player_2_b: teamB.b,
+          start_time: startAt(idx++),
           score: null,
           winner: null,
           place: null,
         });
       }
-    }
 
-    if (newMatches.length === 0) {
-      toast.error("No hay nuevos partidos para generar");
+      const createdCount = await createMatchesInDb(nextMatches);
+
+      await supabase.from("action_logs").insert({
+        action: "GENERATE_MATCHES",
+        entity: "tournament",
+        entity_id: tournamentId,
+        metadata: {
+          tournament_type: tournamentType,
+          phase: phaseName,
+          players: selectedPlayers.length,
+          teams: teams.length,
+          created_matches: createdCount,
+        },
+      });
+
+      toast.success(`Se generó la fase ${phaseName} con ${createdCount} partidos.`);
+      router.push(`/tournaments/${id}`);
+    } catch (error: unknown) {
+      console.error("[generate cup initial]", error);
+      toast.error(getErrorMessage(error, "Error al generar fase inicial de copa"));
+    } finally {
       setCreating(false);
+    }
+  };
+
+  const generateNextCupPhase = async () => {
+    setCreatingNextPhase(true);
+
+    try {
+      const existingMatches = await fetchExistingTournamentMatches();
+      if (existingMatches.length === 0) {
+        toast.error("Primero tenés que generar la fase inicial de la copa.");
+        return;
+      }
+
+      const byPhase = new Map<string, MatchForGeneration[]>();
+      existingMatches.forEach((match) => {
+        const phase = String(match.round_name || "").trim();
+        if (!phase) return;
+        if (!byPhase.has(phase)) byPhase.set(phase, []);
+        byPhase.get(phase)!.push(match);
+      });
+
+      const phaseNames = [...byPhase.keys()].filter((phase) => phaseSize(phase) !== null);
+      if (phaseNames.length === 0) {
+        toast.error("No se detectaron fases válidas de copa.");
+        return;
+      }
+
+      const sortedBySizeDesc = [...phaseNames].sort((a, b) => {
+        const sizeA = phaseSize(a) || 0;
+        const sizeB = phaseSize(b) || 0;
+        return sizeB - sizeA;
+      });
+
+      const phaseHasPendingResults = (phase: string) => {
+        const phaseMatches = byPhase.get(phase) || [];
+        return phaseMatches.some((m) => m.winner !== "A" && m.winner !== "B");
+      };
+
+      const candidatePhase = sortedBySizeDesc.find((phase) => {
+        const phaseMatches = byPhase.get(phase) || [];
+        const completed =
+          phaseMatches.length > 0 &&
+          phaseMatches.every((m) => m.winner === "A" || m.winner === "B");
+        if (!completed) return false;
+
+        const next = nextCupPhase(phase);
+        if (!next) return false;
+
+        return !byPhase.has(next);
+      });
+
+      if (!candidatePhase) {
+        const hasFinalCompleted = (byPhase.get("Final") || []).every(
+          (m) => m.winner === "A" || m.winner === "B"
+        );
+        if (hasFinalCompleted && (byPhase.get("Final") || []).length > 0) {
+          toast.error("La copa ya tiene final completa.");
+          return;
+        }
+
+        const hasAnyPending = sortedBySizeDesc.some((phase) => phaseHasPendingResults(phase));
+        toast.error(
+          hasAnyPending
+            ? "Todavía no hay una fase completa para avanzar. Cargá resultados pendientes."
+            : "No hay fase disponible para generar."
+        );
+        return;
+      }
+
+      const nextPhase = nextCupPhase(candidatePhase);
+      if (!nextPhase) {
+        toast.error("La copa ya tiene final completa.");
+        return;
+      }
+
+      const completedPhaseMatches = (byPhase.get(candidatePhase) || []).sort((a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      );
+
+      const winners: Team[] = [];
+      for (const match of completedPhaseMatches) {
+        const winner = String(match.winner || "").toUpperCase();
+        if (winner === "A") {
+          if (
+            match.player_1_a == null ||
+            match.player_2_a == null
+          ) {
+            continue;
+          }
+          winners.push({ a: match.player_1_a, b: match.player_2_a });
+          continue;
+        }
+
+        if (winner === "B") {
+          if (
+            match.player_1_b == null ||
+            match.player_2_b == null
+          ) {
+            continue;
+          }
+          winners.push({ a: match.player_1_b, b: match.player_2_b });
+        }
+      }
+
+      if (winners.length < 2 || winners.length % 2 !== 0) {
+        toast.error("No hay ganadores suficientes para generar la siguiente fase.");
+        return;
+      }
+
+      const baseStart = baseStartDate();
+      if (!baseStart) {
+        toast.error("Seleccioná una fecha de inicio válida");
+        return;
+      }
+
+      const startAt = (idx: number) => {
+        const d = new Date(baseStart);
+        d.setDate(d.getDate() + 7);
+        d.setMinutes(d.getMinutes() + idx * 5);
+        return d.toISOString();
+      };
+
+      const nextMatches: MatchInsertPayload[] = [];
+      let idx = 0;
+      for (let i = 0; i < winners.length / 2; i += 1) {
+        const teamA = winners[i];
+        const teamB = winners[winners.length - 1 - i];
+        nextMatches.push({
+          tournament_id: tournamentId,
+          round_name: nextPhase,
+          player_1_a: teamA.a,
+          player_2_a: teamA.b,
+          player_1_b: teamB.a,
+          player_2_b: teamB.b,
+          start_time: startAt(idx++),
+          score: null,
+          winner: null,
+          place: null,
+        });
+      }
+
+      const createdCount = await createMatchesInDb(nextMatches);
+
+      await supabase.from("action_logs").insert({
+        action: "GENERATE_MATCHES",
+        entity: "tournament",
+        entity_id: tournamentId,
+        metadata: {
+          tournament_type: tournamentType,
+          phase_from: candidatePhase,
+          phase_to: nextPhase,
+          created_matches: createdCount,
+        },
+      });
+
+      toast.success(`Fase ${nextPhase} generada con ${createdCount} partidos.`);
+      router.push(`/tournaments/${id}`);
+    } catch (error: unknown) {
+      console.error("[generate cup next phase]", error);
+      toast.error(getErrorMessage(error, "Error al generar la siguiente fase"));
+    } finally {
+      setCreatingNextPhase(false);
+    }
+  };
+
+  const generateMatches = async () => {
+    if (!tournamentId || Number.isNaN(tournamentId)) {
+      toast.error("ID de torneo inválido");
       return;
     }
 
-    // ➕ Insertar partidos
-    const { data: createdMatches, error: insertError } = await supabase
-      .from("matches")
-      .insert(newMatches)
-      .select("id");
-
-    if (insertError) {
-      console.error("SUPABASE INSERT ERROR:", insertError);
-      toast.error(insertError.message || "Error al generar partidos");
-      setCreating(false);
+    if (tournamentType === "cup") {
+      await generateCupInitialPhase();
       return;
     }
 
-    // Notificar a los jugadores de los partidos creados
-    if (createdMatches && createdMatches.length > 0) {
-      notifyMatchCreated(createdMatches.map((m: { id: number }) => m.id));
-    }
-
-    // 🧾 Insertar log de acción (no bloquea si falla)
-    await supabase.from("action_logs").insert({
-      action: "GENERATE_MATCHES",
-      entity: "tournament",
-      entity_id: tournamentId,
-      metadata: {
-        formato: format,
-        grupos: format === "grupos" ? groupsCount : null,
-        ida_vuelta: format === "grupos" ? roundTrip : null,
-        seed: seeded,
-        jugadores: selectedPlayers.length,
-        parejas: teams.length,
-        partidos_creados: newMatches.length,
-        start_date: startDate,
-      },
-    });
-
-    toast.success(
-      skippedExisting > 0
-        ? `Se generaron ${newMatches.length} partidos (2vs2). ${skippedExisting} cruces ya existían y se omitieron.`
-        : `Se generaron ${newMatches.length} partidos (2vs2)`
-    );
-    setCreating(false);
-    router.push(`/tournaments/edit/${id}`);
+    await generateLeagueMatches();
   };
 
   const isOddPlayers = selectedPlayers.length % 2 !== 0;
+
+  if (!roleLoading && !isAdmin && !isManager) {
+    return (
+      <main className="max-w-xl mx-auto p-6">
+        <p className="text-red-600 font-semibold">No tenés permisos para generar partidos.</p>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-6">
@@ -527,7 +774,18 @@ export default function GenerateMatchesPage() {
 
       <Card>
         <div className="space-y-6">
-          {rounds.length > 0 && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            <p className="font-semibold text-gray-900">
+              {tournament?.name || `Torneo #${id}`} · {TOURNAMENT_TYPE_LABEL[tournamentType]}
+            </p>
+            {tournamentType === "league" ? (
+              <p className="mt-1">Modo configurado: <strong>{LEAGUE_MODE_LABEL[leagueMode]}</strong>.</p>
+            ) : (
+              <p className="mt-1">La copa se genera por fases de llaves: octavos, cuartos, semifinal y final.</p>
+            )}
+          </div>
+
+          {rounds.length > 0 && tournamentType === "league" && (
             <div>
               <label className="block text-sm font-medium mb-1">Jornada</label>
               <select
@@ -554,28 +812,8 @@ export default function GenerateMatchesPage() {
             </div>
           )}
 
-          {/* Formato */}
           <div>
-            <label className="block text-sm font-medium mb-1">Formato</label>
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value as Format)}
-              className="w-full border rounded px-3 py-2"
-            >
-              <option value="liga">Liga (todos contra todos)</option>
-              <option value="grupos">Grupos</option>
-              <option value="eliminacion">Eliminación directa</option>
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Todos los formatos generan partidos <b>2vs2</b> (se arman parejas automáticamente).
-            </p>
-          </div>
-
-          {/* Fecha */}
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Fecha de inicio del torneo
-            </label>
+            <label className="block text-sm font-medium mb-1">Fecha base de generación</label>
             <input
               type="date"
               value={startDate}
@@ -583,11 +821,10 @@ export default function GenerateMatchesPage() {
               className="w-full border rounded px-3 py-2"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Necesaria porque <code>start_time</code> en <code>matches</code> no permite NULL.
+              Se usa para definir la fecha/hora inicial de los partidos generados.
             </p>
           </div>
 
-          {/* Armado de parejas */}
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -620,39 +857,6 @@ export default function GenerateMatchesPage() {
             </button>
           </div>
 
-          {/* Opciones según formato */}
-          {format === "grupos" && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Cantidad de grupos (por parejas)
-                </label>
-                <input
-                  type="number"
-                  min={2}
-                  max={Math.max(2, Math.floor(selectedPlayers.length / 2) || 2)}
-                  value={groupsCount}
-                  onChange={(e) => setGroupsCount(Number(e.target.value))}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="roundTrip"
-                  checked={roundTrip}
-                  onChange={(e) => setRoundTrip(e.target.checked)}
-                  className="accent-green-600"
-                />
-                <label htmlFor="roundTrip" className="select-none">
-                  Ida y vuelta
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Jugadores */}
           <div>
             <p className="font-medium mb-2">Seleccionar jugadores</p>
 
@@ -665,12 +869,11 @@ export default function GenerateMatchesPage() {
                 players.map((player) => (
                   <label
                     key={player.id}
-                    className={`flex items-center gap-3 p-2 rounded border cursor-pointer transition
-                      ${
-                        selectedPlayers.includes(player.id)
-                          ? "bg-green-50 border-green-500"
-                          : "bg-white border-gray-300 hover:bg-gray-50"
-                      }`}
+                    className={`flex items-center gap-3 p-2 rounded border cursor-pointer transition ${
+                      selectedPlayers.includes(player.id)
+                        ? "bg-green-50 border-green-500"
+                        : "bg-white border-gray-300 hover:bg-gray-50"
+                    }`}
                   >
                     <input
                       type="checkbox"
@@ -678,9 +881,7 @@ export default function GenerateMatchesPage() {
                       checked={selectedPlayers.includes(player.id)}
                       onChange={() => togglePlayer(player.id)}
                     />
-                    <span className="text-sm font-medium text-gray-900">
-                      {player.name}
-                    </span>
+                    <span className="text-sm font-medium text-gray-900">{player.name}</span>
                   </label>
                 ))
               )}
@@ -692,15 +893,10 @@ export default function GenerateMatchesPage() {
               </p>
             )}
 
-            <p className="text-sm text-gray-500 mt-2">
-              Jugadores seleccionados: {selectedPlayers.length}
-            </p>
-            <p className="text-sm text-gray-500">
-              Parejas estimadas: {Math.floor(selectedPlayers.length / 2)}
-            </p>
+            <p className="text-sm text-gray-500 mt-2">Jugadores seleccionados: {selectedPlayers.length}</p>
+            <p className="text-sm text-gray-500">Parejas estimadas: {Math.floor(selectedPlayers.length / 2)}</p>
           </div>
 
-          {/* Preview de parejas */}
           <div>
             <p className="font-medium mb-2">Vista previa de parejas</p>
             {selectedPlayers.length < 4 ? (
@@ -720,18 +916,41 @@ export default function GenerateMatchesPage() {
                 })}
               </div>
             )}
-            <p className="text-xs text-gray-500 mt-2">
-              Formato seleccionado: <b>{formatLabel(format)}</b>
-            </p>
           </div>
 
-          <button
-            onClick={generateMatches}
-            disabled={creating}
-            className="bg-green-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-green-700 transition disabled:opacity-50"
-          >
-            {creating ? "Generando partidos..." : "Generar partidos"}
-          </button>
+          {tournamentType === "cup" && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              <p className="font-semibold">Copa por llaves</p>
+              <p className="mt-1">
+                La fase inicial requiere cantidad de parejas potencia de 2 (2, 4, 8, 16...).
+                Después, cargá resultados y generá la siguiente fase automáticamente.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={generateMatches}
+              disabled={creating}
+              className="bg-green-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-green-700 transition disabled:opacity-50"
+            >
+              {creating
+                ? "Generando..."
+                : tournamentType === "cup"
+                ? "Generar fase inicial"
+                : "Generar partidos"}
+            </button>
+
+            {tournamentType === "cup" && (
+              <button
+                onClick={generateNextCupPhase}
+                disabled={creatingNextPhase}
+                className="bg-indigo-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-indigo-700 transition disabled:opacity-50"
+              >
+                {creatingNextPhase ? "Generando..." : "Generar siguiente fase"}
+              </button>
+            )}
+          </div>
         </div>
       </Card>
     </main>

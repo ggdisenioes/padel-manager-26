@@ -2,12 +2,20 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  DEFAULT_LEAGUE_MODE,
+  DEFAULT_TOURNAMENT_TYPE,
+  type LeagueMode,
+  type TournamentType,
+} from "../../../lib/tournamentFormats";
 
 type CreateTournamentBody = {
   name?: string;
   category?: string;
   status?: string;
   start_date?: string | null;
+  tournament_type?: TournamentType;
+  league_mode?: LeagueMode | null;
   rounds?: Array<{
     round_number?: number;
     round_name?: string;
@@ -25,6 +33,8 @@ const ALLOWED_STATUSES = new Set([
   "finalizado",
   "proximo",
 ]);
+const ALLOWED_TOURNAMENT_TYPES = new Set<TournamentType>(["league", "cup"]);
+const ALLOWED_LEAGUE_MODES = new Set<LeagueMode>(["single_leg", "double_leg"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,6 +97,8 @@ export async function POST(request: NextRequest) {
     const category = (body.category || "").trim();
     const status = (body.status || "").trim();
     const startDate = body.start_date || null;
+    const tournamentTypeRaw = String(body.tournament_type || DEFAULT_TOURNAMENT_TYPE).trim();
+    const leagueModeRaw = body.league_mode == null ? null : String(body.league_mode).trim();
     const roundsInput = Array.isArray(body.rounds) ? body.rounds : [];
 
     if (!name) {
@@ -108,6 +120,22 @@ export async function POST(request: NextRequest) {
         { error: "Estado de torneo inválido." },
         { status: 400 }
       );
+    }
+
+    const tournamentType = (ALLOWED_TOURNAMENT_TYPES.has(tournamentTypeRaw as TournamentType)
+      ? tournamentTypeRaw
+      : DEFAULT_TOURNAMENT_TYPE) as TournamentType;
+
+    let leagueMode: LeagueMode | null = null;
+    if (tournamentType === "league") {
+      const normalizedLeagueMode = (leagueModeRaw || DEFAULT_LEAGUE_MODE) as LeagueMode;
+      if (!ALLOWED_LEAGUE_MODES.has(normalizedLeagueMode)) {
+        return NextResponse.json(
+          { error: "Modo de liga inválido." },
+          { status: 400 }
+        );
+      }
+      leagueMode = normalizedLeagueMode;
     }
 
     if (roundsInput.length > 40) {
@@ -183,13 +211,43 @@ export async function POST(request: NextRequest) {
       status,
       start_date: effectiveStartDate,
       tenant_id: profile.tenant_id,
+      tournament_type: tournamentType,
+      league_mode: leagueMode,
     };
 
-    const { data, error } = await adminClient
+    let { data, error } = await adminClient
       .from("tournaments")
       .insert(payload)
       .select("id")
       .single();
+
+    if (
+      error &&
+      /(column|schema cache)/i.test(error.message || "") &&
+      /(tournament_type|league_mode)/i.test(error.message || "")
+    ) {
+      if (tournamentType === "cup") {
+        return NextResponse.json(
+          { error: "Falta aplicar la migración de tipos de torneo en base de datos." },
+          { status: 400 }
+        );
+      }
+
+      const legacyInsert = await adminClient
+        .from("tournaments")
+        .insert({
+          name,
+          category,
+          status,
+          start_date: effectiveStartDate,
+          tenant_id: profile.tenant_id,
+        })
+        .select("id")
+        .single();
+
+      data = legacyInsert.data;
+      error = legacyInsert.error;
+    }
 
     if (error) {
       const message = error.message?.includes("PLAN_LIMIT")

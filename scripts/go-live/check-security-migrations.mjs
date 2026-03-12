@@ -52,6 +52,35 @@ for (const file of files) {
     addWarning(file, "SECURITY DEFINER function without explicit `SET search_path = ...`");
   }
 
+  // Guardrail for broad RLS policies.
+  // Using literal TRUE in USING/WITH CHECK can be valid for constrained admin roles,
+  // but should always be an explicit review decision.
+  const policyStatements = lower.match(/create\s+policy[\s\S]*?;/gi) || [];
+  for (const stmt of policyStatements) {
+    const hasAlwaysTruePredicate =
+      /\busing\s*\(\s*true\s*\)/gi.test(stmt) ||
+      /\bwith\s+check\s*\(\s*true\s*\)/gi.test(stmt);
+
+    if (!hasAlwaysTruePredicate) continue;
+
+    const targetsAnon = /\bto\s+[^;]*\banon\b/gi.test(stmt);
+    const isSelectOnly = /\bfor\s+select\b/gi.test(stmt);
+    const hasWriteCommand = /\bfor\s+(insert|update|delete|all)\b/gi.test(stmt);
+
+    if (targetsAnon && hasWriteCommand && !isSelectOnly) {
+      addCritical(
+        file,
+        "RLS policy grants anon write access with literal TRUE predicate (USING/WITH CHECK)"
+      );
+      continue;
+    }
+
+    addWarning(
+      file,
+      "RLS policy uses literal TRUE predicate (USING/WITH CHECK) and should be explicitly reviewed"
+    );
+  }
+
   // Warning: public tables should explicitly enable RLS in same migration.
   const createsPublicTable =
     /create\s+table\s+(if\s+not\s+exists\s+)?public\.[a-z0-9_]+/gi.test(lower);

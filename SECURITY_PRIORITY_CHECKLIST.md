@@ -9,6 +9,7 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
   - Protege contra:
     - `DISABLE ROW LEVEL SECURITY` en migraciones nuevas.
     - Vistas con `SECURITY DEFINER`.
+    - Políticas RLS con predicados literales `USING (true)` / `WITH CHECK (true)` para revisión explícita.
   - Archivo: `scripts/go-live/check-security-migrations.mjs`.
 
 - [x] Endurecer endpoints mutables contra CSRF (sin cambiar RBAC/RLS).

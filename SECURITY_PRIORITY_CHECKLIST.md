@@ -43,7 +43,7 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
 - [ ] Rate limit en endpoints sensibles:
   - Login, reset password, invitaciones, cambio de rol.
   - Recomendación: límite por IP + por usuario + ventana temporal.
-  - Estado actual: aplicado en reset password, invitaciones (send/resend/cancel), cambio de rol, creación/borrado/cambio de contraseña de usuarios admin y notificación de registros.
+  - Estado actual: aplicado en reset password, invitaciones (send/resend/cancel), cambio de rol, creación/borrado/cambio de contraseña de usuarios admin, notificación de registros y flujo completo de passkeys (register/auth options+verify).
   - Implementación: `rateLimitAsync` con backend distribuido (`@upstash/ratelimit` + `@vercel/kv`) y fallback seguro en memoria.
 
 - [ ] MFA obligatorio para roles `admin` (y recomendado para `manager`).

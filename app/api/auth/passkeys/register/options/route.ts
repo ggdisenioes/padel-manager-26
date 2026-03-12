@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const reqContext = getPasskeyRequestContext(req);
     const context = getPasskeyContext();
     const supabaseAdmin = createSupabaseAdminClient(context);
-    const ipLimit = applyPasskeyRateLimit(`passkeys:register:options:ip:${reqContext.ip}`, {
+    const ipLimit = await applyPasskeyRateLimit(`passkeys:register:options:ip:${reqContext.ip}`, {
       maxRequests: 30,
       windowMs: 60_000,
     });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json(
         { error: "too_many_attempts" },
-        { status: 429, headers: { "Retry-After": "60" } }
+        { status: 429, headers: { "Retry-After": String(ipLimit.retryAfterSeconds) } }
       );
     }
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid_session" }, { status: 401 });
     }
 
-    const userLimit = applyPasskeyRateLimit(`passkeys:register:options:user:${user.id}`, {
+    const userLimit = await applyPasskeyRateLimit(`passkeys:register:options:user:${user.id}`, {
       maxRequests: 10,
       windowMs: 60_000,
     });
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json(
         { error: "too_many_attempts" },
-        { status: 429, headers: { "Retry-After": "60" } }
+        { status: 429, headers: { "Retry-After": String(userLimit.retryAfterSeconds) } }
       );
     }
 

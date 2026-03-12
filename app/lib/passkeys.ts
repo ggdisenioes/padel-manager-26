@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { NextRequest, NextResponse } from "next/server";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import { getClientIp, rateLimitAsync } from "@/lib/rate-limit";
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 
@@ -173,7 +173,7 @@ export function getPasskeyRequestContext(req: Request): PasskeyRequestContext {
   };
 }
 
-export function applyPasskeyRateLimit(
+export async function applyPasskeyRateLimit(
   key: string,
   {
     maxRequests,
@@ -182,8 +182,19 @@ export function applyPasskeyRateLimit(
     maxRequests: number;
     windowMs: number;
   }
-): { success: boolean; remaining: number } {
-  return rateLimit(key, { maxRequests, windowMs });
+): Promise<{
+  success: boolean;
+  remaining: number;
+  retryAfterSeconds: number;
+  strategy: "memory" | "distributed";
+}> {
+  const result = await rateLimitAsync(key, { maxRequests, windowMs });
+  return {
+    success: result.success,
+    remaining: result.remaining,
+    retryAfterSeconds: result.retryAfterSeconds,
+    strategy: result.strategy,
+  };
 }
 
 type PasskeyAuditLogInput = {

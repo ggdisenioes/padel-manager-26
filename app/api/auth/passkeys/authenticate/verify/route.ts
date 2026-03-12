@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = createSupabaseAdminClient(context);
     const reqContext = getPasskeyRequestContext(req);
 
-    const ipLimit = applyPasskeyRateLimit(`passkeys:auth:verify:ip:${reqContext.ip}`, {
+    const ipLimit = await applyPasskeyRateLimit(`passkeys:auth:verify:ip:${reqContext.ip}`, {
       maxRequests: 20,
       windowMs: 60_000,
     });
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       });
       const response = NextResponse.json(
         { error: "too_many_attempts" },
-        { status: 429, headers: { "Retry-After": "60" } }
+        { status: 429, headers: { "Retry-After": String(ipLimit.retryAfterSeconds) } }
       );
       clearChallengeCookie(response, PASSKEY_AUTH_COOKIE);
       return response;
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     const credential = body.credential;
     const normalizedEmail = body.email?.trim().toLowerCase();
 
-    const userLimit = applyPasskeyRateLimit(
+    const userLimit = await applyPasskeyRateLimit(
       `passkeys:auth:verify:user:${challenge.userId}`,
       { maxRequests: 10, windowMs: 60_000 }
     );
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       });
       const response = NextResponse.json(
         { error: "too_many_attempts" },
-        { status: 429, headers: { "Retry-After": "60" } }
+        { status: 429, headers: { "Retry-After": String(userLimit.retryAfterSeconds) } }
       );
       clearChallengeCookie(response, PASSKEY_AUTH_COOKIE);
       return response;

@@ -4,6 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-site",
+  "X-DNS-Prefetch-Control": "off",
+};
 
 function isMutatingMethod(method: string) {
   return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
@@ -19,6 +28,18 @@ function isSameOrigin(request: NextRequest, originValue: string) {
   }
 }
 
+function withSecurityHeaders(response: NextResponse, request: NextRequest) {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    response.headers.set(key, value);
+  }
+
+  if (request.nextUrl.protocol === "https:") {
+    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+
+  return response;
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -31,29 +52,29 @@ export async function proxy(req: NextRequest) {
     const secFetchSite = req.headers.get("sec-fetch-site");
 
     if (origin && !isSameOrigin(req, origin)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return withSecurityHeaders(NextResponse.json({ error: "forbidden" }, { status: 403 }), req);
     }
 
     if (!origin && referer && !isSameOrigin(req, referer)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return withSecurityHeaders(NextResponse.json({ error: "forbidden" }, { status: 403 }), req);
     }
 
     if (!origin && !referer && secFetchSite === "cross-site") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      return withSecurityHeaders(NextResponse.json({ error: "forbidden" }, { status: 403 }), req);
     }
   }
 
   // Protect /super-admin routes server-side
   if (pathname.startsWith("/super-admin") || pathname.startsWith("/api/super-admin")) {
     if (!supabaseUrl || !serviceRoleKey) {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)), req);
     }
 
     // Extract access token from cookies (Supabase stores it in sb-*-auth-token)
     const authCookie = req.cookies.getAll().find((c) => c.name.includes("-auth-token"));
 
     if (!authCookie) {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)), req);
     }
 
     try {
@@ -70,7 +91,7 @@ export async function proxy(req: NextRequest) {
       }
 
       if (!accessToken) {
-        return NextResponse.redirect(new URL("/login", req.url));
+        return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)), req);
       }
 
       // Verify user with service role
@@ -84,7 +105,7 @@ export async function proxy(req: NextRequest) {
       } = await supabase.auth.getUser(accessToken);
 
       if (error || !user) {
-        return NextResponse.redirect(new URL("/login", req.url));
+        return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)), req);
       }
 
       // Check role
@@ -95,14 +116,14 @@ export async function proxy(req: NextRequest) {
         .single();
 
       if (!profile || (profile.role !== "super_admin" && profile.role !== "admin")) {
-        return NextResponse.redirect(new URL("/", req.url));
+        return withSecurityHeaders(NextResponse.redirect(new URL("/", req.url)), req);
       }
     } catch {
-      return NextResponse.redirect(new URL("/login", req.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/login", req.url)), req);
     }
   }
 
-  return NextResponse.next();
+  return withSecurityHeaders(NextResponse.next(), req);
 }
 
 export const config = {

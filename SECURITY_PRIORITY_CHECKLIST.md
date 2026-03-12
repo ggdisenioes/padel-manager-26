@@ -18,15 +18,18 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
     - Si `Sec-Fetch-Site = cross-site` y no hay origen válido, se bloquea.
   - Resultado: se reduce riesgo de requests cruzados con cookies de sesión.
 
-- [ ] Auditoría productiva de tablas expuestas sin RLS (lectura).
+- [x] Auditoría productiva de tablas expuestas sin RLS (lectura).
   - Ejecutar SQL de auditoría en Supabase y confirmar 0 hallazgos críticos.
   - SQL listo: `sql/security_p0_audit.sql`.
+  - Script automático alternativo (solo lectura): `npm run audit:live-db-security`.
+  - Última ejecución: 2026-03-12 (0 tablas públicas sin RLS, 0 grants directos a anon/authenticated).
   - Condición de cierre:
     - 0 tablas en schemas expuestos sin RLS.
     - 0 vistas con `security_definer=true`.
 
-- [ ] Auditoría de funciones `SECURITY DEFINER` activas.
+- [x] Auditoría de funciones `SECURITY DEFINER` activas.
   - Verificar que cada función tenga `SET search_path` fijo y permisos mínimos.
+  - Última ejecución: 2026-03-12 (0 funciones `SECURITY DEFINER` sin `search_path` fijo).
   - Cerrar hallazgos con migración correctiva compatible.
 
 - [x] Hardening masivo de `SECURITY DEFINER` sin `search_path` (runtime DB).

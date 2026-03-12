@@ -13,6 +13,7 @@
     "check:secret-patterns": "node scripts/go-live/check-secret-patterns.mjs",
     "check:e2e-env": "node scripts/go-live/check-e2e-env.mjs",
     "check:backup-readiness": "node scripts/go-live/check-backup-readiness.mjs",
+    "audit:live-db-security": "node scripts/go-live/audit-live-db-security.mjs",
     "go-live:smoke": "node scripts/go-live/smoke-prod.mjs",
     "monitor:health": "node scripts/go-live/monitor-health.mjs",
     "test:e2e": "playwright test",
@@ -48,6 +49,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
+    "pg": "^8.20.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

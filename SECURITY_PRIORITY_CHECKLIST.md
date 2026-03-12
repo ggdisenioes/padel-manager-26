@@ -29,6 +29,11 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
   - Verificar que cada función tenga `SET search_path` fijo y permisos mínimos.
   - Cerrar hallazgos con migración correctiva compatible.
 
+- [x] Hardening masivo de `SECURITY DEFINER` sin `search_path` (runtime DB).
+  - Estado: aplicado con migración `20260312113500_harden_definer_search_path.sql`.
+  - Resultado: funciones `SECURITY DEFINER` en `public` sin `search_path` quedaron con:
+    - `search_path = pg_catalog, public, auth, extensions`.
+
 ## P1 - Alta
 
 - [ ] Rate limit en endpoints sensibles:

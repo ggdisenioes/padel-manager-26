@@ -20,6 +20,7 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
 
 - [ ] Auditoría productiva de tablas expuestas sin RLS (lectura).
   - Ejecutar SQL de auditoría en Supabase y confirmar 0 hallazgos críticos.
+  - SQL listo: `sql/security_p0_audit.sql`.
   - Condición de cierre:
     - 0 tablas en schemas expuestos sin RLS.
     - 0 vistas con `security_definer=true`.

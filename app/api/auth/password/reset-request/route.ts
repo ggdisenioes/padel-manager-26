@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import { getClientIp, rateLimitAsync } from "@/lib/rate-limit";
 import { sendPasswordResetEmail } from "@/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -48,7 +48,7 @@ function getSubdomainSlug(host: string): string | null {
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { success } = rateLimit(`password-reset:${ip}`, {
+    const { success, retryAfterSeconds } = await rateLimitAsync(`password-reset:${ip}`, {
       maxRequests: 5,
       windowMs: 60_000,
     });
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     if (!success) {
       return NextResponse.json(
         { error: "Demasiados intentos. Intentá en un minuto." },
-        { status: 429 }
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
       );
     }
 

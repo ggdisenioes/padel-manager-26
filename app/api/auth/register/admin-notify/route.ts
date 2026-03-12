@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { getClientIp, rateLimit } from "@/lib/rate-limit";
+import { getClientIp, rateLimitAsync } from "@/lib/rate-limit";
 import { sendAdminPendingRegistrationEmail } from "@/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -55,12 +55,15 @@ function getOrigin(req: Request): string {
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { success } = rateLimit(`register-admin-notify:${ip}`, {
+    const { success, retryAfterSeconds } = await rateLimitAsync(`register-admin-notify:${ip}`, {
       maxRequests: 12,
       windowMs: 60_000,
     });
     if (!success) {
-      return NextResponse.json({ error: "Demasiados intentos." }, { status: 429 });
+      return NextResponse.json(
+        { error: "Demasiados intentos." },
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+      );
     }
 
     if (!supabaseUrl || !serviceRoleKey) {

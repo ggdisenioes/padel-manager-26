@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getClientIp, rateLimitAsync } from "@/lib/rate-limit";
 
 type Body = {
   user_id?: string;
@@ -12,6 +13,18 @@ const ALLOWED_ROLES = new Set(["admin", "manager", "user"]);
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const { success, retryAfterSeconds } = await rateLimitAsync(`admin-users-role:${ip}`, {
+      maxRequests: 10,
+      windowMs: 60_000,
+    });
+    if (!success) {
+      return NextResponse.json(
+        { error: "Demasiados intentos. Intentá en un minuto." },
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -3,6 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function GET() {
   const startedAt = Date.now();
+  const distributedRateLimitConfigured = Boolean(
+    process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
+  );
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -15,6 +18,10 @@ export async function GET() {
         checks: {
           config: false,
           database: false,
+          security: {
+            csrf_guard: true,
+            distributed_rate_limit_configured: distributedRateLimitConfigured,
+          },
         },
         duration_ms: Date.now() - startedAt,
         timestamp: new Date().toISOString(),
@@ -41,6 +48,10 @@ export async function GET() {
           checks: {
             config: true,
             database: false,
+            security: {
+              csrf_guard: true,
+              distributed_rate_limit_configured: distributedRateLimitConfigured,
+            },
           },
           error: "database_check_failed",
           duration_ms: Date.now() - startedAt,
@@ -57,6 +68,10 @@ export async function GET() {
         checks: {
           config: true,
           database: true,
+          security: {
+            csrf_guard: true,
+            distributed_rate_limit_configured: distributedRateLimitConfigured,
+          },
         },
         duration_ms: Date.now() - startedAt,
         timestamp: new Date().toISOString(),
@@ -71,6 +86,10 @@ export async function GET() {
         checks: {
           config: true,
           database: false,
+          security: {
+            csrf_guard: true,
+            distributed_rate_limit_configured: distributedRateLimitConfigured,
+          },
         },
         error: "health_probe_exception",
         duration_ms: Date.now() - startedAt,

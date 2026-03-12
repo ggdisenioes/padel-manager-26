@@ -43,36 +43,6 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const body = await req.json().catch(() => ({}));
-
-    // ✅ FIXED: Use Zod validation schema
-    let validatedData;
-    try {
-      validatedData = createUserSchema.parse({
-        email: body?.email,
-        password: body?.password,
-        role: body?.role,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return NextResponse.json(
-          {
-            error: "Validación fallida",
-            ...(process.env.NODE_ENV === "development"
-              ? { details: error.errors }
-              : {}),
-          },
-          { status: 400 }
-        );
-      }
-      return NextResponse.json(
-        { error: "Datos inválidos" },
-        { status: 400 }
-      );
-    }
-
-    const { email, password, role } = validatedData;
-
     // Authorization: Bearer <token>
     const authHeader = req.headers.get("authorization") || "";
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
@@ -163,6 +133,36 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+
+    const body = await req.json().catch(() => ({}));
+
+    // Parse body only after authentication/authorization checks.
+    let validatedData;
+    try {
+      validatedData = createUserSchema.parse({
+        email: body?.email,
+        password: body?.password,
+        role: body?.role,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return NextResponse.json(
+          {
+            error: "Validación fallida",
+            ...(process.env.NODE_ENV === "development"
+              ? { details: error.errors }
+              : {}),
+          },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json(
+        { error: "Datos inválidos" },
+        { status: 400 }
+      );
+    }
+
+    const { email, password, role } = validatedData;
 
     // Crear usuario en Auth
     const { data: createdUser, error: createUserError } =

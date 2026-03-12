@@ -88,15 +88,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
-    const parsed = resendSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.errors[0]?.message || "Datos inválidos." },
-        { status: 400 }
-      );
-    }
-
     const authHeader = req.headers.get("authorization") || "";
     const match = authHeader.match(/^Bearer\s+(.+)$/i);
     if (!match) {
@@ -142,6 +133,15 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Solo admins activos pueden reenviar invitaciones." },
         { status: 403 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const parsed = resendSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.errors[0]?.message || "Datos inválidos." },
+        { status: 400 }
       );
     }
 

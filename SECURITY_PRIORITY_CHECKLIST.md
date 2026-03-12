@@ -46,6 +46,10 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
   - Estado actual: aplicado en reset password, invitaciones (send/resend/cancel), cambio de rol, creación/borrado/cambio de contraseña de usuarios admin, notificación de registros y flujo completo de passkeys (register/auth options+verify).
   - Implementación: `rateLimitAsync` con backend distribuido (`@upstash/ratelimit` + `@vercel/kv`) y fallback seguro en memoria.
 
+- [x] Endpoints admin: autenticar/autorización antes de validar payload.
+  - Estado: aplicado en `create-user`, `send-invitation`, `invitations/resend`, `invitations/cancel`.
+  - Resultado: menor exposición de validaciones internas a requests no autenticados y menor costo de CPU ante abuso.
+
 - [ ] MFA obligatorio para roles `admin` (y recomendado para `manager`).
 
 - [ ] Política de sesiones:

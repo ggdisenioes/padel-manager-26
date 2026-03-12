@@ -52,6 +52,7 @@ Objetivo: elevar seguridad sin romper permisos actuales ni dejar la app inactiva
 - [ ] Endurecer secretos y accesos:
   - Rotación trimestral de claves (`service_role`, Resend, CI/CD).
   - Secret scanning en CI (bloquea merge con secretos).
+  - Estado actual: secret scanning automatizado agregado en CI (`check:secret-patterns` + workflow `security-guardrails.yml`).
 
 ## P2 - Media
 

@@ -1,0 +1,27 @@
+{
+  "endpoint": "https://twinco.padelx.es/api/health",
+  "started_at": "2026-03-02T19:00:48.293Z",
+  "finished_at": "2026-03-02T19:00:49.978Z",
+  "pass": true,
+  "attempts": 3,
+  "results": [
+    {
+      "attempt": 1,
+      "ok": true,
+      "status": 200,
+      "duration_ms": 1685,
+      "payload": {
+        "ok": true,
+        "status": "healthy",
+        "checks": {
+          "config": true,
+          "database": true
+        },
+        "duration_ms": 447,
+        "timestamp": "2026-03-02T19:00:49.816Z"
+      },
+      "body_preview": "{\"ok\":true,\"status\":\"healthy\",\"checks\":{\"config\":true,\"database\":true},\"duration_ms\":447,\"timestamp\":\"2026-03-02T19:00:49.816Z\"}",
+      "error": null
+    }
+  ]
+}

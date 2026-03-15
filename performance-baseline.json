@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-02-19T15:20:31.337Z",
+  "since24": "2026-02-18T15:20:31.337Z",
+  "counts": {
+    "total": 6,
+    "last24h": 6,
+    "byType": {
+      "web_vital": 6
+    }
+  },
+  "topWebMetricPaths": [
+    [
+      "TTFB | /players",
+      1
+    ],
+    [
+      "LCP | /players",
+      1
+    ],
+    [
+      "INP | /admin/users",
+      1
+    ],
+    [
+      "FCP | /players",
+      1
+    ],
+    [
+      "TTFB | /admin/users",
+      1
+    ],
+    [
+      "FID | /login",
+      1
+    ]
+  ],
+  "topApiEndpoints": []
+}

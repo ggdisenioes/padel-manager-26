@@ -32,12 +32,13 @@ async function checkOnce() {
     } catch {}
 
     const durationMs = Date.now() - startedAt;
-    const ok =
-      res.status === 200 &&
+    const hasHealthyShape =
       payload &&
       payload.ok === true &&
-      payload.status === "healthy" &&
-      payload.checks?.database === true;
+      payload.status === "healthy";
+    const databaseCheckPassed =
+      !payload?.checks || payload.checks?.database === true;
+    const ok = res.status === 200 && hasHealthyShape && databaseCheckPassed;
 
     return {
       ok,

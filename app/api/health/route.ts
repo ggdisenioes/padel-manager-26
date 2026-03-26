@@ -3,29 +3,27 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function GET() {
   const startedAt = Date.now();
-  const distributedRateLimitConfigured = Boolean(
-    process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-  );
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  const buildPublicPayload = (
+    ok: boolean,
+    status: "healthy" | "degraded",
+    checks: { config: boolean; database: boolean }
+  ) => ({
+    ok,
+    status,
+    checks,
+    duration_ms: Date.now() - startedAt,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json(
-      {
-        ok: false,
-        status: "degraded",
-        checks: {
-          config: false,
-          database: false,
-          security: {
-            csrf_guard: true,
-            distributed_rate_limit_configured: distributedRateLimitConfigured,
-          },
-        },
-        duration_ms: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
-      },
+      buildPublicPayload(false, "degraded", {
+        config: false,
+        database: false,
+      }),
       { status: 503 }
     );
   }
@@ -42,59 +40,27 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        {
-          ok: false,
-          status: "degraded",
-          checks: {
-            config: true,
-            database: false,
-            security: {
-              csrf_guard: true,
-              distributed_rate_limit_configured: distributedRateLimitConfigured,
-            },
-          },
-          error: "database_check_failed",
-          duration_ms: Date.now() - startedAt,
-          timestamp: new Date().toISOString(),
-        },
+        buildPublicPayload(false, "degraded", {
+          config: true,
+          database: false,
+        }),
         { status: 503 }
       );
     }
 
     return NextResponse.json(
-      {
-        ok: true,
-        status: "healthy",
-        checks: {
-          config: true,
-          database: true,
-          security: {
-            csrf_guard: true,
-            distributed_rate_limit_configured: distributedRateLimitConfigured,
-          },
-        },
-        duration_ms: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
-      },
+      buildPublicPayload(true, "healthy", {
+        config: true,
+        database: true,
+      }),
       { status: 200 }
     );
   } catch {
     return NextResponse.json(
-      {
-        ok: false,
-        status: "degraded",
-        checks: {
-          config: true,
-          database: false,
-          security: {
-            csrf_guard: true,
-            distributed_rate_limit_configured: distributedRateLimitConfigured,
-          },
-        },
-        error: "health_probe_exception",
-        duration_ms: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
-      },
+      buildPublicPayload(false, "degraded", {
+        config: true,
+        database: false,
+      }),
       { status: 503 }
     );
   }

@@ -12,11 +12,37 @@ const exportSchema = z.object({
   date_to: z.string().optional(),
 });
 
+type PlayerStatsReport = {
+  total_matches: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+};
+
+type PlayerStatsMatchRow = {
+  dateLabel: string;
+  partner: string;
+  opponent: string;
+  result: string;
+  score: string;
+};
+
+type AnalyticsReportStats = {
+  total_users: number;
+  total_active_users: number;
+  total_players: number;
+  total_matches: number;
+  total_completed_matches: number;
+  total_tournaments: number;
+  total_bookings: number;
+  news_published: number;
+};
+
 // Helper function to generate HTML for PDF
 function generatePlayerStatsHTML(
   playerName: string,
-  stats: any,
-  matches: any[]
+  stats: PlayerStatsReport,
+  matches: PlayerStatsMatchRow[]
 ): string {
   const matchesHTML = matches
     .map(
@@ -104,7 +130,7 @@ function generatePlayerStatsHTML(
   `;
 }
 
-function generateAnalyticsHTML(stats: any): string {
+function generateAnalyticsHTML(stats: AnalyticsReportStats): string {
   return `
     <!DOCTYPE html>
     <html>
@@ -160,10 +186,6 @@ function generateAnalyticsHTML(stats: any): string {
         <div class="metric">
           <div class="label">Reservas de Pistas</div>
           <div class="value">${stats.total_bookings}</div>
-        </div>
-        <div class="metric">
-          <div class="label">Desafíos Pendientes</div>
-          <div class="value">${stats.pending_challenges}</div>
         </div>
         <div class="metric">
           <div class="label">Noticias Publicadas</div>
@@ -241,7 +263,17 @@ export async function POST(req: Request) {
         { player_id_input: validated.entity_id }
       );
 
-      htmlContent = generatePlayerStatsHTML(player.name, stats, []);
+      const playerStats = (stats || {}) as Partial<PlayerStatsReport>;
+      htmlContent = generatePlayerStatsHTML(
+        player.name,
+        {
+          total_matches: Number(playerStats.total_matches || 0),
+          wins: Number(playerStats.wins || 0),
+          losses: Number(playerStats.losses || 0),
+          winRate: Number(playerStats.winRate || 0),
+        },
+        []
+      );
     } else if (validated.type === "analytics") {
       const { data: stats, error: statsError } = await supabaseClient.rpc(
         "get_platform_stats",
@@ -262,12 +294,19 @@ export async function POST(req: Request) {
         .eq("tenant_id", profile.tenant_id)
         .is("deleted_at", null);
 
-      const normalizedStats = {
-        ...(stats as any),
+      const rawStats = stats as Partial<AnalyticsReportStats>;
+      const normalizedStats: AnalyticsReportStats = {
+        total_users: Number(rawStats.total_users || 0),
+        total_active_users: Number(rawStats.total_active_users || 0),
         total_players:
           typeof activePlayersCount === "number"
             ? activePlayersCount
-            : Number((stats as any)?.total_players || 0),
+            : Number(rawStats.total_players || 0),
+        total_matches: Number(rawStats.total_matches || 0),
+        total_completed_matches: Number(rawStats.total_completed_matches || 0),
+        total_tournaments: Number(rawStats.total_tournaments || 0),
+        total_bookings: Number(rawStats.total_bookings || 0),
+        news_published: Number(rawStats.news_published || 0),
       };
 
       htmlContent = generateAnalyticsHTML(normalizedStats);
@@ -291,7 +330,7 @@ export async function POST(req: Request) {
         },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0]?.message || "Datos inválidos" },

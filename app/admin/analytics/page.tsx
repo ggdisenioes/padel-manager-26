@@ -167,9 +167,9 @@ export default function AnalyticsDashboard() {
         const errorData = await response.json();
         toast.error(errorData.error || "Error al generar PDF");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Export PDF error:", error);
-      toast.error(error.message || "Error al generar PDF");
+      toast.error(error instanceof Error ? error.message : "Error al generar PDF");
     }
   };
 
@@ -216,11 +216,6 @@ export default function AnalyticsDashboard() {
       label: "Reservas de Pistas",
       value: stats.total_bookings,
       color: "bg-indigo-100 text-indigo-800",
-    },
-    {
-      label: "Desafíos Pendientes",
-      value: stats.pending_challenges,
-      color: "bg-red-100 text-red-800",
     },
     {
       label: "Noticias Publicadas",
@@ -288,9 +283,6 @@ export default function AnalyticsDashboard() {
         <Card className="p-6">
           <h2 className="text-lg font-bold mb-4">🎯 Resumen de Actividad</h2>
           <div className="space-y-3 text-sm">
-            <p>
-              <strong>{stats.pending_challenges}</strong> desafíos esperando respuesta
-            </p>
             <p>
               <strong>{stats.total_bookings}</strong> pistas reservadas en total
             </p>

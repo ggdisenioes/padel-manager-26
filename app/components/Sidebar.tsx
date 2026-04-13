@@ -148,7 +148,6 @@ export default function Sidebar({ onLinkClick }: SidebarProps) {
     { id: "matches", label: t("nav.matches"), href: "/matches", emoji: "🎾" },
     { id: "ranking", label: t("nav.ranking"), href: "/ranking", emoji: "⭐", requiredFeature: "has_advanced_rankings" },
     { id: "news", label: t("nav.news"), href: "/news", emoji: "📰" },
-    { id: "challenges", label: t("nav.challenges"), href: "/challenges", emoji: "⚔️" },
     { id: "bookings", label: t("nav.bookings"), href: "/bookings", emoji: "📅" },
     { id: "mi-cuenta", label: t("nav.myAccount"), href: "/mi-cuenta", emoji: "👤" },
   ];

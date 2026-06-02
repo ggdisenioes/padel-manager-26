@@ -193,7 +193,10 @@ export async function POST(req: Request) {
       if (ok) sent += 1;
     }
 
-    await supabaseAdmin
+    // El query builder de Supabase es "thenable" pero no es una Promise nativa:
+    // no tiene .catch(). Encadenarlo tira "insert(...).catch is not a function".
+    // Lo correcto es await + chequear el error.
+    const { error: logError } = await supabaseAdmin
       .from("action_logs")
       .insert({
         user_id: pendingProfile.id,
@@ -207,10 +210,10 @@ export async function POST(req: Request) {
           sent_to_admins: sent,
           total_admins: recipients.length,
         },
-      })
-      .catch((err) => {
-        console.warn("[register/admin-notify] action log warning", err);
       });
+    if (logError) {
+      console.warn("[register/admin-notify] action log warning", logError);
+    }
 
     return NextResponse.json({
       success: true,

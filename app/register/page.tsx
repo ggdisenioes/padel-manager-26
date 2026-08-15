@@ -14,6 +14,14 @@ type Tenant = {
   is_active?: boolean | null;
 };
 
+type RegisterResponse = {
+  ok?: boolean;
+  error?: string;
+  notify_now?: boolean;
+  confirmation_required?: boolean;
+  user_id?: string | null;
+};
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -115,53 +123,72 @@ export default function RegisterPage() {
     setLoading(true);
 
     // IMPORTANTE: acá NO asignamos roles.
-    // El rol SIEMPRE lo define el backend (trigger en auth.users -> profiles)
-    // y debe ser 'user' + active=false (pendiente) para registro libre.
+    // El alta la hace /api/auth/register en el servidor, que valida el email,
+    // el club y los límites de frecuencia ANTES de crear nada. El rol SIEMPRE
+    // lo define el backend (trigger en auth.users -> profiles): 'user' con
+    // active=false (pendiente) para el registro libre.
     const normalizedEmail = email.trim().toLowerCase();
 
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          requested_tenant_id: tenantId,
-          first_name: firstName.trim() || null,
-          last_name: lastName.trim() || null,
-        },
-      },
-    });
+    let result: RegisterResponse = {};
 
-    if (error) {
-      console.error(error);
-      toast.error(error.message || "No se pudo crear la cuenta.");
-      setLoading(false);
-      return;
-    }
-
-    // Best-effort: notificar por email a todos los admins del tenant.
     try {
-      const notifyController = new AbortController();
-      const notifyTimeout = setTimeout(() => notifyController.abort(), 9000);
-
-      await fetch("/api/auth/register/admin-notify", {
+      const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenant_id: tenantId,
           email: normalizedEmail,
+          password,
+          password_confirmation: password2,
           first_name: firstName.trim() || null,
           last_name: lastName.trim() || null,
-          user_id: data.user?.id || null,
         }),
-        signal: notifyController.signal,
-      }).finally(() => clearTimeout(notifyTimeout));
-    } catch (notifyErr) {
-      // No bloquea el registro del usuario.
-      console.warn("[register] admin notify failed", notifyErr);
+      });
+
+      result = ((await response.json().catch(() => ({}))) || {}) as RegisterResponse;
+
+      if (!response.ok) {
+        toast.error(result.error || "No se pudo crear la cuenta.");
+        setLoading(false);
+        return;
+      }
+    } catch (registerError) {
+      console.error("[register] request failed", registerError);
+      toast.error("No se pudo conectar con el servidor. Intentá de nuevo.");
+      setLoading(false);
+      return;
+    }
+
+    // Si falta confirmar el email, el aviso a los admins lo dispara
+    // /registro-confirmado. Acá solo se avisa cuando la cuenta ya quedó
+    // confirmada (es decir, con la confirmación desactivada en Supabase).
+    if (result.notify_now) {
+      try {
+        const notifyController = new AbortController();
+        const notifyTimeout = setTimeout(() => notifyController.abort(), 9000);
+
+        await fetch("/api/auth/register/admin-notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            email: normalizedEmail,
+            first_name: firstName.trim() || null,
+            last_name: lastName.trim() || null,
+            user_id: result.user_id ?? null,
+          }),
+          signal: notifyController.signal,
+        }).finally(() => clearTimeout(notifyTimeout));
+      } catch (notifyErr) {
+        // No bloquea el registro del usuario.
+        console.warn("[register] admin notify failed", notifyErr);
+      }
     }
 
     toast.success(
-      "Solicitud enviada. Tu acceso quedará pendiente de aprobación por el administrador del club."
+      result.confirmation_required
+        ? "Te enviamos un email para confirmar tu dirección. Confirmala para completar la solicitud."
+        : "Solicitud enviada. Tu acceso quedará pendiente de aprobación por el administrador del club."
     );
     router.push("/login?error=aprobacion_en_curso");
   };

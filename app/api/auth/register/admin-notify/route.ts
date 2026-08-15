@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.errors[0]?.message || "Datos inválidos." },
+        { error: parsed.error.issues[0]?.message || "Datos inválidos." },
         { status: 400 }
       );
     }
@@ -120,6 +120,27 @@ export async function POST(req: Request) {
     if (!isPending || pendingProfile.deleted_at) {
       return NextResponse.json(
         { success: true, sent: 0, skipped: true, reason: "not_pending" },
+        { status: 202 }
+      );
+    }
+
+    // El aviso solo sale si la dirección fue confirmada de verdad.
+    // Sin este control, alcanza con registrar un email inexistente para que
+    // les llegue un mail a todos los admins del club.
+    const { data: authUser, error: authUserError } =
+      await supabaseAdmin.auth.admin.getUserById(pendingProfile.id);
+
+    if (authUserError) {
+      console.error("[register/admin-notify] auth user lookup error", authUserError);
+      return NextResponse.json({ error: "No se pudo preparar la notificación." }, { status: 500 });
+    }
+
+    const emailConfirmedAt =
+      authUser?.user?.email_confirmed_at || authUser?.user?.confirmed_at || null;
+
+    if (!emailConfirmedAt) {
+      return NextResponse.json(
+        { success: true, sent: 0, skipped: true, reason: "email_not_confirmed" },
         { status: 202 }
       );
     }
